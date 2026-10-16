@@ -177,6 +177,10 @@ def detect(text: str, cfg) -> list[Finding]:
             km = _KEY_PREFIX_RE.match(text, start, end)
             if km and km.end() < end:
                 start = km.end()
+            # The model sometimes tags phrases like "Failed password" as a password. Real secrets
+            # don't contain spaces, and secrets are already covered by secrets_detector.
+            if type_ in ("PASSWORD", "API_KEY") and any(ch.isspace() for ch in text[start:end]):
+                continue
             if end - start < 2:
                 continue
             key = (start, end, type_)

@@ -78,3 +78,13 @@ def test_file_and_text_rejected(tmp_path):
 def test_missing_question():
     with pytest.raises(UsageError):
         input_reader.read("  ", None, None, 5000, 1_000_000, stdin=FakeStdin(tty=True))
+
+
+def test_powershell_bom_only_pipe_counts_as_no_input():
+    class BomStdin(FakeStdin):
+        class buffer:
+            @staticmethod
+            def read():
+                return b"\xef\xbb\xbf"
+    r = input_reader.read("q", None, None, 5000, 1_000_000, stdin=BomStdin())
+    assert r.source == "none"

@@ -79,6 +79,8 @@ def read(question: str, file: str | None, text: str | None, max_lines: int, max_
         raw = stdin.buffer.read() if hasattr(stdin, "buffer") else stdin.read()
         if isinstance(raw, str):
             raw = raw.encode("utf-8")
+        if raw.startswith(b"\xef\xbb\xbf"):   # PowerShell may prefix piped text with a UTF-8 BOM
+            raw = raw[3:]
         if raw.strip():
             data = raw
             source = "stdin"

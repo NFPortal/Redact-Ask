@@ -33,3 +33,11 @@ def test_finds_names_and_trims_key_prefix(cfg):
     assert ("PERSON", "Priya Natarajan") in vals          # first + last name joined
     assert any(t == "ORG_NAME" and "Halvorsen" in v for t, v in vals)
     assert not any("SMTP_PASSWORD" in v for _, v in vals)
+
+
+@requires_gliner
+@pytest.mark.slow
+def test_log_phrases_are_not_passwords(cfg):
+    text = ("Oct 16 08:12:44 web-prod-03 sshd[2230]: Failed password for jdoe from 10.9.8.7 port 40112 ssh2\n"
+            "Oct 16 08:12:50 web-prod-03 sshd[2231]: Failed password for jdoe from 10.9.8.7 port 40118 ssh2\n")
+    assert not any(f.type == "PASSWORD" for f in gliner_detector.detect(text, cfg.gliner))
