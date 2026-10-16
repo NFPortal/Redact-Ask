@@ -1,0 +1,9 @@
+Oct 16 08:12:01 web-prod-03 sshd[2211]: Accepted publickey for mlopez from 10.20.4.17 port 51022 ssh2: RSA SHA256:q8Xv2mZ4pL0kT7nR3wY9bC6dF1gH5jK8sA2eU4iO7vM
+Oct 16 08:12:44 web-prod-03 sshd[2230]: Failed password for invalid user oracle from 203.0.113.250 port 40112 ssh2
+Oct 16 08:13:02 web-prod-03 sshd[2230]: Failed password for root from 198.51.100.77 port 40118 ssh2
+Oct 16 08:14:10 web-prod-03 sudo:   mlopez : TTY=pts/0 ; PWD=/home/mlopez/deploy ; USER=root ; COMMAND=/usr/bin/systemctl restart billing-api
+Oct 16 08:14:10 web-prod-03 sudo: pam_unix(sudo:session): session opened for user root(uid=0) by mlopez(uid=1004)
+Oct 16 08:20:33 db-replica-02 kernel: [UFW BLOCK] IN=eth0 OUT= MAC=52:54:00:9a:3c:11:52:54:00:7e:21:aa:08:00 SRC=185.220.101.45 DST=10.20.8.31 LEN=60 PROTO=TCP SPT=44321 DPT=5432
+Oct 16 08:21:05 db-replica-02 systemd[1]: Started backup job for host nas01.corp.local (share \\nas01\finance-archive).
+Oct 16 08:22:47 web-prod-03 dhclient[911]: DHCPACK of 192.168.50.23 from 192.168.50.1 (xid=0x5a1f), lease for host laptop-kchen
+Oct 16 08:23:00 web-prod-03 nginx[1023]: upstream http://grafana.lan:3000/d/abc timed out, client: 172.16.9.4

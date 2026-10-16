@@ -1,0 +1,20 @@
+Log Name:      Security
+Source:        Microsoft-Windows-Security-Auditing
+Event ID:      4625
+Computer:      WS-FIN-0142.contoso.local
+An account failed to log on.
+Subject:
+	Security ID:		S-1-5-21-3623811015-3361044348-30300820-1013
+	Account Name:		WS-FIN-0142$
+	Account Domain:		CONTOSO
+Account For Which Logon Failed:
+	Security ID:		NULL SID
+	Account Name:		tbrennan
+	Account Domain:		CONTOSO
+Network Information:
+	Workstation Name:	WS-FIN-0142
+	Source Network Address:	10.40.12.88
+	Source Port:		49822
+Process Information:
+	Caller Process Name:	C:\Users\tbrennan\AppData\Local\Programs\vpnclient\agent.exe
+Additional: user CONTOSO\svc_backup mapped \\fs02.contoso.local\HR-Payroll as H:
