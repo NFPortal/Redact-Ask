@@ -5,6 +5,7 @@ Never changes text.
 """
 from __future__ import annotations
 
+from .rules_detector import COMMON_WORDS
 from .models import CATALOG, Finding, inside_any, placeholder_spans, priority
 
 MIN_LENGTH = 2
@@ -22,6 +23,14 @@ def _pick_type(a: Finding, b: Finding) -> Finding:
     """
     by_priority = min((a, b), key=lambda x: (priority(x.type), -(x.end - x.start)))
     if (a.start, a.end) == (b.start, b.end):
+        # Same text: a rule/list/secret match knows more than a model guess (TABLE beats GLiNER's DB),
+        # unless the model's type is a secret.
+        a_model = a.detector.split("+")[0] in ("gliner", "llm")
+        b_model = b.detector.split("+")[0] in ("gliner", "llm")
+        if a_model != b_model:
+            rule, model = (b, a) if a_model else (a, b)
+            if not (CATALOG.get(model.type) and CATALOG[model.type].group == "secrets"):
+                return rule
         return by_priority
     if a.start <= b.start and a.end >= b.end:
         outer, inner = a, b
@@ -44,6 +53,10 @@ def merge(text: str, findings: list[Finding], config) -> list[Finding]:
         if not config.type_enabled(f.type):
             continue
         if f.end - f.start < MIN_LENGTH or not text[f.start:f.end].strip():
+            continue
+        # "AND", "SELECT", "error"... are never sensitive on their own (secrets excepted).
+        info = CATALOG.get(f.type)
+        if (info is None or info.group != "secrets") and text[f.start:f.end].strip().casefold() in COMMON_WORDS:
             continue
         # Findings inside (or overlapping) an existing placeholder are already redacted.
         if inside_any(f.start, f.end, ph):

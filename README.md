@@ -33,6 +33,12 @@ Get-Content app.log | .venv\Scripts\python redact_ask.py "Why are logins failing
 Options: `--to TARGET[:MODEL]`, `--session NAME`, `--new-session`, `--deep` (local Ollama pass),
 `--restore`, `--out FILE`, `--file PATH`. The clipboard is never read.
 
+## Passphrase
+
+Session mappings are encrypted with a key derived from a passphrase you type at each run.
+It is never stored, so nothing else running as you (including AI agents) can decrypt them.
+The first run asks you to create it. If you forget it, delete the sessions folder and start over.
+
 ## Your files
 
 | What | Windows | Debian |

@@ -13,26 +13,51 @@ from redactask.session_store import SessionStore
 
 def store(expiry=14):
     d = config.dirs()
-    return SessionStore(d.sessions, d.workdirs, key_manager.get_key(d.config), expiry)
+    key, _ = key_manager.get_key(d.config)
+    return SessionStore(d.sessions, d.workdirs, key, expiry)
 
 
 # ---- key_manager -----------------------------------------------------------
-def test_key_file_fallback_is_stable_and_private(isolated_home):
+def test_passphrase_key_is_derived_not_stored(isolated_home):
     d = config.dirs()
-    k1 = key_manager.get_key(d.config)
-    k2 = key_manager.get_key(d.config)
-    assert k1 == k2
-    if sys.platform != "win32":
-        assert oct((d.config / "key").stat().st_mode & 0o777) == "0o600"
+    k1, created = key_manager.get_key(d.config)
+    assert created
+    key_manager._cache.clear()
+    k2, created2 = key_manager.get_key(d.config)
+    assert k1 == k2 and not created2
+    stored = b"".join(f.read_bytes() for f in d.config.iterdir() if f.is_file())
+    assert k1 not in stored and b"test-passphrase" not in stored
+    assert sorted(f.name for f in d.config.iterdir() if f.name.startswith("key")) == ["key.check", "key.salt"]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions")
-def test_key_file_with_wide_permissions_refused(isolated_home):
+def test_wrong_passphrase_rejected(isolated_home, monkeypatch):
     d = config.dirs()
     key_manager.get_key(d.config)
-    os.chmod(d.config / "key", 0o644)
-    with pytest.raises(StorageError, match="600"):
+    key_manager._cache.clear()
+    monkeypatch.setattr(key_manager, "_prompt", lambda m: "not-the-passphrase")
+    with pytest.raises(StorageError, match="Wrong passphrase"):
         key_manager.get_key(d.config)
+
+
+def test_new_passphrase_must_match_and_be_long_enough(isolated_home, monkeypatch):
+    answers = iter(["short", "long-enough-1", "different-2", "long-enough-1", "long-enough-1"])
+    monkeypatch.setattr(key_manager, "_prompt", lambda m: next(answers))
+    key, created = key_manager.get_key(config.dirs().config)
+    assert created and key
+
+
+def test_legacy_sessions_are_migrated(isolated_home):
+    from cryptography.fernet import Fernet
+    d = config.dirs()
+    old_key = Fernet.generate_key()
+    old_store = SessionStore(d.sessions, d.workdirs, old_key, 14)
+    sess = old_store.load("legacy")
+    masker.placeholder_for(sess.mapping, "USER", "olduser")
+    old_store.save(sess)
+    s = store()
+    assert s.migrate(old_key) == 1
+    assert s.load("legacy").mapping.reverse["<USER_1>"] == "olduser"
+    assert s.migrate(old_key) == 0
 
 
 # ---- session_store ---------------------------------------------------------
@@ -73,9 +98,10 @@ def test_wrong_key_is_an_error_not_an_overwrite(isolated_home):
     s = store()
     s.save(s.load("p"))
     from cryptography.fernet import Fernet
-    (config.dirs().config / "key").write_bytes(Fernet.generate_key())
+    d = config.dirs()
+    other = SessionStore(d.sessions, d.workdirs, Fernet.generate_key(), 14)
     with pytest.raises(StorageError, match="decrypted"):
-        store().load("p")
+        other.load("p")
 
 
 # ---- final_scan ------------------------------------------------------------

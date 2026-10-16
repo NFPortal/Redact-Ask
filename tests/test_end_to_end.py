@@ -166,3 +166,4 @@ def test_pasted_text_argument(fake_cli, capsys):
 def test_default_output_is_the_raw_model_answer(fake_cli, capsys):
     code, out, _ = run(["--file", str(CORPUS / "syslog_auth.log"), "q", "--session", "t10"], capsys)
     assert code == 0 and out.strip() == "Looks like <USER_1> failed from <IP_1>."
+

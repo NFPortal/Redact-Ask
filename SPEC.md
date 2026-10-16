@@ -83,7 +83,7 @@ pipeline.
 | Lists `lists/*.txt` | `%APPDATA%\redact-ask\lists\` | `~/.config/redact-ask/lists/` |
 | Session mappings (encrypted) | `%LOCALAPPDATA%\redact-ask\sessions\` | `~/.local/share/redact-ask/sessions/` |
 | Audit log `audit.jsonl` | `%LOCALAPPDATA%\redact-ask\audit\` | `~/.local/state/redact-ask/` |
-| Fallback key file (headless only) | n/a | `~/.config/redact-ask/key` (mode 600) |
+| Passphrase salt and check value | `%APPDATA%\redact-ask\key.salt`, `key.check` | `~/.config/redact-ask/key.salt`, `key.check` |
 
 Lists and mappings contain real sensitive values and are **never stored in the project folder**.
 
@@ -371,17 +371,21 @@ do. A script may only depend on `models.py`, `config.py`, and the scripts named 
   - Replace from the end of the text backwards so offsets stay valid.
 - **Must not:** load or save the mapping (that is [12]).
 
-### [11] `key_manager.py` — encryption key
-- **Input:** none.
-- **Output:** a Fernet key (bytes).
+### [11] `key_manager.py` — encryption key from a passphrase
+- **Input:** a passphrase typed at the terminal on every run (once per process).
+- **Output:** a Fernet key derived with scrypt (n=2^15, r=8, p=1) from the passphrase and a random salt.
 - **Responsibilities:**
-  - Get or create the key in the OS credential store using `keyring` (Windows Credential Manager;
-    Debian Secret Service via GNOME Keyring or KWallet).
-  - If no keyring backend is available (headless Debian), use `~/.config/redact-ask/key`, created
-    with mode 600; warn once that this is weaker. Refuse to use the file if its permissions are
-    wider than 600.
-  - Never print or log the key.
-- **Must not:** read or write session files.
+  - First run: ask for a new passphrase twice (at least 8 characters); store only the salt
+    (`key.salt`) and a check value (`key.check`, used to recognise a wrong passphrase) in the
+    config folder. **The key and the passphrase are never stored.**
+  - Later runs: ask once; 3 wrong attempts → exit 6.
+  - Read the passphrase from the console itself (Windows console / `/dev/tty`), never from stdin,
+    an argument, a file or an environment variable, so piped input isn't consumed and no other
+    program (including an AI agent running as the user) can supply or recover it.
+  - One-time migration: if an older version left a key in Windows Credential Manager or a key
+    file, re-encrypt those sessions with the passphrase key, then delete the stored key.
+  - Never print or log the key or the passphrase.
+- **Must not:** read or write session files (migration is done by [12] when [1] asks it to).
 
 ### [12] `session_store.py` — sessions and mappings
 - **Input:** session name or current folder; key from [11].
@@ -588,7 +592,7 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
       gets independent numbering.
 - [ ] By default the answer is printed exactly as the model wrote it; with `--restore` it contains
       the original values for every known placeholder.
-- [ ] Works on Windows 11 and Debian (with and without a keyring service).
+- [ ] Works on Windows 11 and Debian (passphrase prompt works in both).
 - [ ] The cloud CLI cannot read local files or run commands (verified by asking it to read a known
       file and checking that it can't).
 - [ ] A 5,000-line log is processed (excluding the cloud call) in under 30 s on the RTX PRO 2000
@@ -607,7 +611,7 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 | Over-redact when unsure | A missed secret is worse than lost context | 2026-10-16 |
 | Placeholders `<TYPE_N>`; private IPs `<IP_n in SUBNET_m>` | Easy to unmask; keeps network relationships visible | 2026-10-16 |
 | Mapping persisted per session (default: per folder; `--session NAME`) | Consistent placeholders for follow-up questions | 2026-10-16 |
-| Mappings encrypted (Fernet) with the key in the OS keyring; 600-mode key file fallback on headless Debian | Works on Windows and Debian; no passphrase to type | 2026-10-16 |
+| Mappings encrypted (Fernet) with the key in the OS keyring; 600-mode key file fallback on headless Debian — superseded by the passphrase row below | Works on Windows and Debian; no passphrase to type | 2026-10-16 |
 | Lists, mappings, config stored in user folders, never the project folder | They contain real sensitive values; avoid git commits and cloud tools reading them | 2026-10-16 |
 | Sessions expire after 14 unused days (configurable) | Limit how long real values sit on disk | 2026-10-16 |
 | No preview; send automatically when the final scan passes | User preference | 2026-10-16 |
@@ -634,11 +638,13 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 | Audit log entries expire with the session rule (14 days) | One retention rule | 2026-10-16 |
 | Subnet guess /24 for private IPs, overridden by `lists/subnets.txt` | Fits typical home/lab networks; real ranges win | 2026-10-16 |
 | Final scan decodes hex/base64 blobs and redacts any that hide sensitive values (`ENCODED`) | A Windows event's binary data leaked a server name | 2026-10-16 |
+| Session key derived from a passphrase typed each run; no stored key (Credential Manager / key file removed, old sessions migrated) | An AI agent running as the user decrypted the mapping while debugging; a stored key can't stop that | 2026-10-16 |
+| `sessions show` (print the mapping) not added | User decision: no tool that prints real values | 2026-10-16 |
 | Web search/fetch risk accepted | Only placeholders can leave via search queries | 2026-10-16 |
 | Cloud CLI runs in a per-session empty folder instead of a fresh temp folder | Claude Code resumes conversations per working folder | 2026-10-16 |
 | Learner doesn't prompt when stderr isn't a terminal | Scripted runs would otherwise hang waiting for an answer | 2026-10-16 |
 | Merged overlaps: a containing finding keeps its type (IMAGE over HOST) unless it is generic (ENV_VALUE, SQL_VALUE, ...) or the inner one is a secret | Keeps placeholders meaningful while never downgrading a secret | 2026-10-16 |
-| `REDACT_ASK_HOME` puts all user folders in one place; `REDACT_ASK_KEY_FILE_ONLY=1` skips the keyring | Used by the tests so they never touch real data or the real keyring | 2026-10-16 |
+| `REDACT_ASK_HOME` puts all user folders in one place; tests replace the passphrase prompt | Used by the tests so they never touch real data, the real keyring or a real terminal | 2026-10-16 |
 | GLiNER model: `nvidia/gliner-pii` by default; `urchade/gliner_multi_pii-v1` kept as the alternative in config | Newest GLiNER PII model with the broadest type coverage (55+); best published results at threshold 0.3 | 2026-10-16 |
 
 ## Edge Cases & Failure Behavior
@@ -648,8 +654,10 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 - **Invalid UTF-8** → replace bad bytes, warn; **binary** → exit 3.
 - **GLiNER model missing and offline** → exit 7 with download instructions; nothing sent.
 - **Ollama not running with `--deep`** → exit 7 (never silently skip a requested pass).
-- **Keyring locked or unavailable on desktop Debian** → fall back to the key file only if no
-  keyring backend exists; if a backend exists but is locked, exit 6 and ask the user to unlock it.
+- **Wrong passphrase 3 times, or no terminal to ask for it** (e.g. run from a scheduled task) → exit 6;
+  nothing is sent.
+- **Forgotten passphrase** → sessions can't be recovered; delete the sessions folder, `key.salt` and
+  `key.check` to start over.
 - **Session file can't be decrypted** (key changed) → exit 6; suggest `sessions clear NAME`.
 - **Placeholder-like text already in the input** (`<USER_1>` in the original) → escape it before
   masking so it can't be confused with a real placeholder, and restore it in the output.
@@ -678,7 +686,7 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
   logged-in account's email address to the request context. It is the account's own email (already
   known to Anthropic), but it is not redacted and no option to turn it off was found.
 - **CPU-only speed** (Debian without a GPU) has not been measured.
-- **Debian** has not been tested yet (keyring, key-file fallback).
+- **Debian** has not been tested yet.
 - **Over-redaction:** union spans sometimes hide useful context (for example a whole connection
   string becomes one `<SECRET_n>`); acceptable under the over-redact decision, revisit if answers
   suffer.

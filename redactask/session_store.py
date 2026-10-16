@@ -73,6 +73,27 @@ class SessionStore:
                 pass
             raise StorageError(f"Couldn't save session: {e}") from e
 
+    def migrate(self, old_key: bytes) -> int:
+        """Re-encrypt session files written with an older key under the current key."""
+        old = Fernet(old_key)
+        moved = 0
+        for p in sorted(self.dir.glob("*.session")):
+            blob = p.read_bytes()
+            try:
+                self.fernet.decrypt(blob)
+                continue                      # already uses the current key
+            except InvalidToken:
+                pass
+            try:
+                plain = old.decrypt(blob)
+            except InvalidToken:
+                continue                      # neither key works; left for 'sessions clear'
+            tmp = p.with_suffix(".tmp")
+            tmp.write_bytes(self.fernet.encrypt(plain))
+            os.replace(tmp, p)
+            moved += 1
+        return moved
+
     def reset(self, session: Session) -> Session:
         """--new-session: forget mapping and conversations."""
         self._delete(session.id)

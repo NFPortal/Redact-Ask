@@ -26,10 +26,15 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.fixture(autouse=True)
 def isolated_home(tmp_path, monkeypatch):
-    """Every test gets its own config/data folders and never touches the real keyring."""
+    """Every test gets its own config/data folders, a fixed test passphrase instead of a terminal
+    prompt, and never touches the real keyring (no legacy-key migration)."""
+    from redactask import key_manager
     home = tmp_path / "home"
     monkeypatch.setenv("REDACT_ASK_HOME", str(home))
-    monkeypatch.setenv("REDACT_ASK_KEY_FILE_ONLY", "1")
+    monkeypatch.setattr(key_manager, "_prompt", lambda message: "test-passphrase")
+    monkeypatch.setattr(key_manager, "legacy_key", lambda config_dir: None)
+    monkeypatch.setattr(key_manager, "delete_legacy", lambda config_dir: None)
+    monkeypatch.setattr(key_manager, "_cache", {})
     return home
 
 

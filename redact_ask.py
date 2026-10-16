@@ -93,8 +93,16 @@ def _parser() -> argparse.ArgumentParser:
 
 def _open_store(cfg) -> SessionStore:
     d = config.dirs()
-    key = key_manager.get_key(d.config)
-    return SessionStore(d.sessions, d.workdirs, key, cfg.session_expiry_days)
+    key, _ = key_manager.get_key(d.config)
+    store = SessionStore(d.sessions, d.workdirs, key, cfg.session_expiry_days)
+    old = key_manager.legacy_key(d.config)
+    if old:
+        # Older versions kept a key in Windows Credential Manager / a key file. Move those
+        # sessions to the passphrase key, then delete the stored key.
+        moved = store.migrate(old)
+        key_manager.delete_legacy(d.config)
+        _err(f"moved {moved} session(s) to passphrase encryption and deleted the old stored key.")
+    return store
 
 
 def cmd_sessions(argv: list[str]) -> int:

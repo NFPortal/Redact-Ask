@@ -1,85 +1,137 @@
 """[11] The encryption key for session files (SPEC: key_manager.py).
 
-Stored in the OS credential store via `keyring` (Windows Credential Manager, Debian Secret
-Service). On a headless Debian box with no keyring backend, falls back to a key file with
-mode 600. Never prints or logs the key.
+The key is derived from a passphrase the user types at every run (scrypt) and is never
+stored anywhere. Only a random salt and a check value (to recognise a wrong passphrase) are
+kept in the config folder. Without the passphrase, nothing running as the user can decrypt
+the session files. The passphrase is read from the terminal itself, never from stdin, an
+argument or an environment variable. Never prints or logs the key or the passphrase.
+
+Older versions kept a random key in the OS keyring (or a key file); `legacy_key()` and
+`delete_legacy()` exist only to migrate those sessions once.
 """
 from __future__ import annotations
 
+import base64
 import os
-import stat
 import sys
 from pathlib import Path
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
 from .models import StorageError
 
-SERVICE = "redact-ask"
-ACCOUNT = "session-encryption-key"
-_warned = False
+SALT_FILE = "key.salt"
+CHECK_FILE = "key.check"
+CHECK_PLAINTEXT = b"redact-ask passphrase check"
+MIN_LENGTH = 8
+MAX_TRIES = 3
+
+LEGACY_SERVICE = "redact-ask"
+LEGACY_ACCOUNT = "session-encryption-key"
+LEGACY_FILE = "key"
+
+_cache: dict[str, bytes] = {}
 
 
-def _keyring_backend():
-    """The usable keyring backend, or None when there is none (headless Linux)."""
+# ---------------------------------------------------------------------------
+# Reading the passphrase from the terminal
+# ---------------------------------------------------------------------------
+def _prompt(message: str) -> str:
+    """Read a passphrase from the console without echo. Never falls back to stdin, so piped
+    input (the text to analyze) is never consumed and a script can't supply the passphrase."""
+    import getpass
+    if sys.platform == "win32":
+        try:
+            import msvcrt  # noqa: F401  (getpass uses the console via msvcrt)
+        except ImportError as e:
+            raise StorageError("No console available to ask for the passphrase.") from e
+        return getpass.win_getpass(message, stream=sys.stderr)
+    try:
+        fd = os.open("/dev/tty", os.O_RDWR | os.O_NOCTTY)
+        os.close(fd)
+    except OSError as e:
+        raise StorageError("No terminal available to ask for the passphrase; run redact-ask from a terminal.") from e
+    return getpass.unix_getpass(message, stream=sys.stderr)
+
+
+def _derive(passphrase: str, salt: bytes) -> bytes:
+    kdf = Scrypt(salt=salt, length=32, n=2 ** 15, r=8, p=1)
+    return base64.urlsafe_b64encode(kdf.derive(passphrase.encode("utf-8")))
+
+
+def is_set_up(config_dir: Path) -> bool:
+    return (config_dir / SALT_FILE).exists() and (config_dir / CHECK_FILE).exists()
+
+
+def _create(config_dir: Path) -> bytes:
+    print("redact-ask: create a passphrase to encrypt your session mappings. It is never stored;\n"
+          "you'll type it each time. If you forget it, the saved sessions can't be recovered.",
+          file=sys.stderr)
+    for _ in range(MAX_TRIES):
+        first = _prompt("New passphrase: ")
+        if len(first) < MIN_LENGTH:
+            print(f"redact-ask: use at least {MIN_LENGTH} characters.", file=sys.stderr)
+            continue
+        if _prompt("Repeat passphrase: ") != first:
+            print("redact-ask: the two entries didn't match.", file=sys.stderr)
+            continue
+        salt = os.urandom(16)
+        key = _derive(first, salt)
+        config_dir.mkdir(parents=True, exist_ok=True)
+        (config_dir / SALT_FILE).write_bytes(base64.b64encode(salt))
+        (config_dir / CHECK_FILE).write_bytes(Fernet(key).encrypt(CHECK_PLAINTEXT))
+        return key
+    raise StorageError("No passphrase was set.")
+
+
+def _unlock(config_dir: Path) -> bytes:
+    salt = base64.b64decode((config_dir / SALT_FILE).read_bytes())
+    check = (config_dir / CHECK_FILE).read_bytes()
+    for attempt in range(MAX_TRIES):
+        key = _derive(_prompt("redact-ask passphrase: "), salt)
+        try:
+            if Fernet(key).decrypt(check) == CHECK_PLAINTEXT:
+                return key
+        except InvalidToken:
+            pass
+        if attempt < MAX_TRIES - 1:
+            print("redact-ask: wrong passphrase, try again.", file=sys.stderr)
+    raise StorageError("Wrong passphrase.")
+
+
+def get_key(config_dir: Path) -> tuple[bytes, bool]:
+    """(key, newly_created). Prompts at most once per process."""
+    cached = _cache.get(str(config_dir))
+    if cached:
+        return cached, False
+    created = not is_set_up(config_dir)
+    key = _create(config_dir) if created else _unlock(config_dir)
+    _cache[str(config_dir)] = key
+    return key, created
+
+
+# ---------------------------------------------------------------------------
+# One-time migration from the old keyring / key-file storage
+# ---------------------------------------------------------------------------
+def legacy_key(config_dir: Path) -> bytes | None:
+    """The key an older version stored, if any (never creates one)."""
+    path = config_dir / LEGACY_FILE
+    if path.exists():
+        return path.read_bytes().strip()
     try:
         import keyring
-        from keyring.backends import fail, null
-    except ImportError:
+        value = keyring.get_password(LEGACY_SERVICE, LEGACY_ACCOUNT)
+    except Exception:
         return None
-    kr = keyring.get_keyring()
-    if isinstance(kr, (fail.Keyring, null.Keyring)):
-        return None
-    # chainer with no usable backends also counts as none
+    return value.encode("ascii") if value else None
+
+
+def delete_legacy(config_dir: Path) -> None:
+    """Remove the stored key so nothing can decrypt old copies without the passphrase."""
+    (config_dir / LEGACY_FILE).unlink(missing_ok=True)
     try:
-        from keyring.backends.chainer import ChainerBackend
-        if isinstance(kr, ChainerBackend) and not kr.backends:
-            return None
-    except ImportError:
+        import keyring
+        keyring.delete_password(LEGACY_SERVICE, LEGACY_ACCOUNT)
+    except Exception:
         pass
-    return kr
-
-
-def _from_keyring(kr) -> bytes:
-    from keyring.errors import KeyringError, KeyringLocked
-    try:
-        key = kr.get_password(SERVICE, ACCOUNT)
-        if key is None:
-            key = Fernet.generate_key().decode("ascii")
-            kr.set_password(SERVICE, ACCOUNT, key)
-        return key.encode("ascii")
-    except KeyringLocked as e:
-        raise StorageError("The system keyring is locked. Unlock it (log in to the desktop session or "
-                           "unlock GNOME Keyring/KWallet) and try again.") from e
-    except KeyringError as e:
-        raise StorageError(f"Couldn't use the system keyring: {e}") from e
-
-
-def _from_file(path: Path) -> bytes:
-    global _warned
-    if not _warned:
-        print(f"redact-ask: no system keyring found; using the key file {path} (weaker protection).",
-              file=sys.stderr)
-        _warned = True
-    if path.exists():
-        if sys.platform != "win32":
-            mode = stat.S_IMODE(path.stat().st_mode)
-            if mode & 0o077:
-                raise StorageError(f"Key file {path} has permissions {oct(mode)}; it must be 600 "
-                                   f"(chmod 600 '{path}').")
-        return path.read_bytes().strip()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    key = Fernet.generate_key()
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "wb") as f:
-        f.write(key)
-    return key
-
-
-def get_key(config_dir: Path) -> bytes:
-    if os.environ.get("REDACT_ASK_KEY_FILE_ONLY") == "1":   # tests: never touch the real keyring
-        return _from_file(config_dir / "key")
-    kr = _keyring_backend()
-    if kr is None:
-        return _from_file(config_dir / "key")
-    return _from_keyring(kr)

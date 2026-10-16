@@ -179,7 +179,12 @@ def detect(text: str, cfg) -> list[Finding]:
                 start = km.end()
             # The model sometimes tags phrases like "Failed password" as a password. Real secrets
             # don't contain spaces, and secrets are already covered by secrets_detector.
-            if type_ in ("PASSWORD", "API_KEY") and any(ch.isspace() for ch in text[start:end]):
+            # Very short values ('A12' in a SQL filter) are part numbers and codes, not passwords.
+            if type_ in ("PASSWORD", "API_KEY") and (any(ch.isspace() for ch in text[start:end])
+                                                     or end - start < 6):
+                continue
+            # The model's span sometimes swallows SQL/code punctuation; real names don't contain it.
+            if any(ch in "()=<>;" for ch in text[start:end]):
                 continue
             if end - start < 2:
                 continue

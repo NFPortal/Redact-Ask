@@ -251,7 +251,10 @@ DB_KV_RE = re.compile(r"\b(?:database|initial catalog|dbname|db[_ -]?name)\s*=\s
 SQL_SELECT_LIST_RE = re.compile(r"\bSELECT\s+(?:DISTINCT\s+|TOP\s+\d+\s+)?([\s\S]+?)\s+FROM\b", I)
 SQL_COND_COL_RE = re.compile(r"(?:\b(?:WHERE|AND|OR|ON|SET|BY|HAVING)\s+|,\s*)((?:[\w$]+\.)?[\w$]+)\s*(?:=|<>|!=|<=|>=|<|>|\bLIKE\b|\bIN\b|\bIS\b|\bBETWEEN\b|,|\s+(?:ASC|DESC)\b|$)", I)
 SQL_INSERT_COLS_RE = re.compile(rf"\bINSERT\s+INTO\s+{_IDENT}\s*\(([^)]*)\)", I)
-SQL_STRING_RE = re.compile(r"N?'((?:[^']|'')+)'")
+# "FROM hr.employees e" / "JOIN payroll AS p": the alias (e, p)
+SQL_ALIAS_RE = re.compile(rf"\b(?:FROM|JOIN)\s+{_IDENT}\s+(?:AS\s+)?([A-Za-z_]\w*)\b", I)
+# One string literal on one line; '' inside is an escaped quote, and a bare '' is an empty string.
+SQL_STRING_RE = re.compile(r"N?'((?:[^'\n]|'')*)'")
 SQL_KEYWORDS = {
     "select", "from", "where", "and", "or", "not", "null", "is", "in", "on", "as", "join", "inner", "left", "right",
     "outer", "full", "cross", "group", "order", "by", "having", "limit", "offset", "top", "distinct", "insert", "into",
@@ -261,6 +264,12 @@ SQL_KEYWORDS = {
     "cast", "convert", "true", "false", "default", "primary", "key", "foreign", "references", "unique", "if",
     "begin", "commit", "rollback", "transaction", "merge", "using", "matched", "nolock", "dbo", "now", "getdate",
     "current_timestamp", "lower", "upper", "isnull", "nullif", "returning", "only", "temporary", "temp",
+}
+
+# Words that are never worth a placeholder on their own (keywords, log vocabulary).
+COMMON_WORDS = SQL_KEYWORDS | {
+    "the", "for", "with", "true", "false", "none", "null", "error", "warning", "info", "debug",
+    "failed", "success", "ok", "yes", "no", "test",
 }
 
 # Off-by-default patterns
@@ -352,7 +361,23 @@ def _sql(c: _Collector) -> None:
             ident = m.group(1)
             if ident.split(".")[-1].lower() in SQL_KEYWORDS or ident.isdigit():
                 continue
-            c.add(base + m.start(1), base + m.end(1), "COLUMN")
+            if "." in ident:    # table.column -> separate TABLE and COLUMN, like everywhere else
+                dot = m.start(1) + ident.index(".")
+                c.add(base + m.start(1), base + dot, "TABLE")
+                c.add(base + dot + 1, base + m.end(1), "COLUMN")
+            else:
+                c.add(base + m.start(1), base + m.end(1), "COLUMN")
+        # Any table.column reference to a table named in this statement (inside functions,
+        # joins, expressions): the column is redacted too.
+        tables = {t.group(1).split(".")[-1].strip("[]`\"").casefold() for t in SQL_TABLE_RE.finditer(s)}
+        aliases = {a.group(1).casefold() for a in SQL_ALIAS_RE.finditer(s)
+                   if a.group(1).casefold() not in SQL_KEYWORDS}
+        for r in re.finditer(r"\b([\w$]+)\.([\w$]+)\b", s):
+            owner, col = r.group(1).casefold(), r.group(2)
+            if (owner in tables or owner in aliases) and col.casefold() not in SQL_KEYWORDS:
+                if owner in tables:          # short aliases like e/p carry no information; keep them
+                    c.add(base + r.start(1), base + r.end(1), "TABLE")
+                c.add(base + r.start(2), base + r.end(2), "COLUMN")
     c.regex(DB_KV_RE, "DB", 1)
 
 

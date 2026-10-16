@@ -103,3 +103,14 @@ def test_netmask_sets_real_subnet_for_address_and_gateway(cfg):
     assert fs["192.168.8.20"].subnet == "192.168.8.0/22"
     fs = {f.value: f for f in rules_detector.detect(" ip address 10.120.0.1 255.255.0.0", cfg)}
     assert fs["10.120.0.1"].subnet == "10.120.0.0/16"
+
+
+def test_sql_string_literals_and_qualified_columns(cfg):
+    sql = ("SELECT Sodbom.fitem FROM Sodbom LEFT JOIN Inmast ON UPPER(Sodbom.fbompart) = UPPER(Inmast.fpartno)\n"
+           "WHERE RTRIM(Sodbom.fitem)='A12' AND\n(Sodbom.flevel<' 2'\n"
+           "OR (RTRIM(Sodbom.fitem)<>'')) AND NOT SUBSTRING(sodbom.fitem,1,1) BETWEEN '.' AND '9'\n")
+    r = found(sql, cfg)
+    assert ("SQL_VALUE", "A12") in r
+    assert not any(t == "SQL_VALUE" and ("AND" in v or "\n" in v) for t, v in r)   # literals never span
+    for col in ("fbompart", "fpartno", "flevel"):
+        assert ("COLUMN", col) in r

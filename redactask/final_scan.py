@@ -16,6 +16,7 @@ from .models import CATALOG, Finding, Mapping, PLACEHOLDER_RE, inside_any, place
 
 DETECTOR = "final_scan"
 MIN_LEAK_LENGTH = 3
+COMMON_WORDS = rules_detector.COMMON_WORDS
 
 
 def _type_for_prefix(prefix: str) -> str:
@@ -30,6 +31,10 @@ def _mapping_leaks(text: str, mapping: Mapping) -> list[Finding]:
     for ph, real in mapping.reverse.items():
         m = PLACEHOLDER_RE.fullmatch(ph)
         if not m or m.group(1) == "LITERAL" or len(real) < MIN_LEAK_LENGTH:
+            continue
+        # A common word that slipped into the mapping (e.g. "AND" from a SQL literal) must not
+        # make every occurrence of that word look like a leak.
+        if real.casefold() in COMMON_WORDS:
             continue
         values.setdefault(_type_for_prefix(m.group(1)), set()).add(real)
     if not values:
