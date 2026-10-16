@@ -2,8 +2,8 @@
 
 Only parses arguments and calls the other scripts in the order of the SPEC data flow.
 
-    python redact_ask.py [FILE] "question" [--to TARGET[:MODEL]] [--session NAME] [--new-session]
-                                           [--deep] [--out FILE] [--clip]
+    python redact_ask.py ["text to analyze"] "question" [--file PATH] [--to TARGET[:MODEL]]
+                         [--session NAME] [--new-session] [--deep] [--out FILE]
     python redact_ask.py sessions list
     python redact_ask.py sessions clear [NAME | --all]
 """
@@ -78,13 +78,14 @@ def _parser() -> argparse.ArgumentParser:
         prog="redact_ask.py",
         description="Redact logs/code locally, ask Claude Code or Copilot CLI, and restore the real values.",
         epilog="Sessions: python redact_ask.py sessions list | sessions clear [NAME | --all]")
-    p.add_argument("args", nargs="+", metavar="[FILE] QUESTION", help="optional input file, then the question")
+    p.add_argument("args", nargs="+", metavar="[TEXT] QUESTION",
+                   help="optional text to analyze (pasted in quotes), then the question")
+    p.add_argument("--file", metavar="PATH", help="read the text to analyze from a file instead")
     p.add_argument("--to", metavar="TARGET[:MODEL]", help="claude | copilot, optionally with a model (claude:opus)")
     p.add_argument("--session", metavar="NAME", help="named session (default: one per current folder)")
     p.add_argument("--new-session", action="store_true", help="forget this session's mapping and conversation")
     p.add_argument("--deep", action="store_true", help="also run the local LLM detector (Ollama)")
     p.add_argument("--out", metavar="FILE", help="also write the restored answer to FILE")
-    p.add_argument("--clip", action="store_true", help="read the input from the clipboard")
     return p
 
 
@@ -124,8 +125,8 @@ def cmd_sessions(argv: list[str]) -> int:
 def cmd_ask(argv: list[str]) -> int:
     a = _parser().parse_args(argv)
     if len(a.args) > 2:
-        raise UsageError("Expected [FILE] \"question\". Put the question in quotes.")
-    file, question = (a.args[0], a.args[1]) if len(a.args) == 2 else (None, a.args[0])
+        raise UsageError("Expected [\"text\"] \"question\" (or --file PATH \"question\"). Put each in quotes.")
+    text, question = (a.args[0], a.args[1]) if len(a.args) == 2 else (None, a.args[0])
 
     cfg = config.load()
     for w in cfg.warnings:
@@ -135,7 +136,7 @@ def cmd_ask(argv: list[str]) -> int:
     d = config.dirs()
 
     # [3] input
-    inp = input_reader.read(question, file, a.clip, cfg.max_lines, cfg.max_bytes)
+    inp = input_reader.read(question, a.file, text, cfg.max_lines, cfg.max_bytes)
     for w in inp.warnings:
         _err(w)
 

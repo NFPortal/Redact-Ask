@@ -14,23 +14,23 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-On Debian use `.venv/bin/python`, and for `--clip` install `xclip` or `wl-clipboard`.
+On Debian use `.venv/bin/python`.
 The GLiNER model (`nvidia/gliner-pii`) downloads on the first run; after that it works offline.
 
 ## Use
 
 ```
-.venv\Scripts\python redact_ask.py app.log "Why are logins failing?"
+.venv\Scripts\python redact_ask.py "<paste the log or code here>" "Why are logins failing?"
+.venv\Scripts\python redact_ask.py --file app.log "Why are logins failing?"
 Get-Content app.log | .venv\Scripts\python redact_ask.py "Why are logins failing?"
-.venv\Scripts\python redact_ask.py --clip "What does this stack trace mean?"
 .venv\Scripts\python redact_ask.py "Which host was that on?"          # follow-up, same conversation
-.venv\Scripts\python redact_ask.py app.log "..." --to copilot:gpt-5 --out answer.md
+.venv\Scripts\python redact_ask.py --file app.log "..." --to copilot:gpt-5 --out answer.md
 .venv\Scripts\python redact_ask.py sessions list
 .venv\Scripts\python redact_ask.py sessions clear <name> | --all
 ```
 
 Options: `--to TARGET[:MODEL]`, `--session NAME`, `--new-session`, `--deep` (local Ollama pass),
-`--out FILE`, `--clip`.
+`--out FILE`, `--file PATH`. The clipboard is never read.
 
 ## Your files
 

@@ -50,7 +50,7 @@ def run(argv, capsys):
 
 def test_round_trip_restores_values_and_sends_only_redacted(fake_cli, capsys, tmp_path):
     log = CORPUS / "syslog_auth.log"
-    code, out, err = run([str(log), "What happened?", "--session", "t1"], capsys)
+    code, out, err = run(["--file", str(log), "What happened?", "--session", "t1"], capsys)
     assert code == 0, err
     [call] = fake_cli()
     for v in REAL_VALUES:
@@ -63,7 +63,7 @@ def test_round_trip_restores_values_and_sends_only_redacted(fake_cli, capsys, tm
 
 
 def test_follow_up_resumes_conversation_and_keeps_placeholders(fake_cli, capsys):
-    run([str(CORPUS / "syslog_auth.log"), "first", "--session", "t2"], capsys)
+    run(["--file", str(CORPUS / "syslog_auth.log"), "first", "--session", "t2"], capsys)
     code, out, _ = run(["who is mlopez?", "--session", "t2"], capsys)
     first, second = fake_cli()
     assert code == 0
@@ -74,7 +74,7 @@ def test_follow_up_resumes_conversation_and_keeps_placeholders(fake_cli, capsys)
 
 def test_copilot_target_and_model(fake_cli, capsys, monkeypatch):
     monkeypatch.setenv("FAKE_CLI_ANSWER", "user <USER_1>")
-    code, out, _ = run([str(CORPUS / "syslog_auth.log"), "q", "--to", "copilot:gpt-5", "--session", "t3"], capsys)
+    code, out, _ = run(["--file", str(CORPUS / "syslog_auth.log"), "q", "--to", "copilot:gpt-5", "--session", "t3"], capsys)
     [call] = fake_cli()
     assert code == 0 and out.strip() == "user mlopez"
     a = call["argv"]
@@ -84,7 +84,7 @@ def test_copilot_target_and_model(fake_cli, capsys, monkeypatch):
 
 
 def test_no_real_values_written_to_disk(fake_cli, capsys, isolated_home):
-    run([str(CORPUS / "syslog_auth.log"), "q", "--session", "t4", "--out", str(isolated_home / "answer.txt")], capsys)
+    run(["--file", str(CORPUS / "syslog_auth.log"), "q", "--session", "t4", "--out", str(isolated_home / "answer.txt")], capsys)
     for p in isolated_home.rglob("*"):
         if p.is_file() and p.name != "answer.txt":           # --out is the user's restored answer
             data = p.read_bytes()
@@ -97,7 +97,7 @@ def test_nothing_sent_when_scan_aborts(fake_cli, capsys, monkeypatch):
     from redactask import final_scan
     from redactask.models import Finding
     monkeypatch.setattr(final_scan, "scan", lambda text, *a, **k: [Finding(0, 3, text[:3], "SECRET", "final_scan")])
-    code, out, err = run([str(CORPUS / "syslog_auth.log"), "q"], capsys)
+    code, out, err = run(["--file", str(CORPUS / "syslog_auth.log"), "q"], capsys)
     assert code == 4 and "nothing was sent" in err
     assert fake_cli() == []
 
@@ -108,20 +108,20 @@ def test_nothing_sent_when_detector_fails(fake_cli, capsys, monkeypatch):
     def boom(text, cfg):
         raise DetectorError("GLiNER failed: test")
     monkeypatch.setattr(gliner_detector, "detect", boom)
-    code, _, err = run([str(CORPUS / "syslog_auth.log"), "q"], capsys)
+    code, _, err = run(["--file", str(CORPUS / "syslog_auth.log"), "q"], capsys)
     assert code == 7 and fake_cli() == []
 
 
 def test_cloud_failure_is_logged(fake_cli, capsys, monkeypatch, isolated_home):
     monkeypatch.setenv("FAKE_CLI_FAIL", "1")
-    code, _, err = run([str(CORPUS / "syslog_auth.log"), "q", "--to", "copilot"], capsys)
+    code, _, err = run(["--file", str(CORPUS / "syslog_auth.log"), "q", "--to", "copilot"], capsys)
     assert code == 5
     statuses = [json.loads(l)["status"] for l in (config.dirs().audit / "audit.jsonl").read_text().splitlines()]
     assert statuses == ["sending", "error"]
 
 
 def test_sessions_commands(fake_cli, capsys):
-    run([str(CORPUS / "syslog_auth.log"), "q", "--session", "listed"], capsys)
+    run(["--file", str(CORPUS / "syslog_auth.log"), "q", "--session", "listed"], capsys)
     code, out, _ = run(["sessions", "list"], capsys)
     assert code == 0 and "listed" in out and "USER" in out and "mlopez" not in out
     code, out, _ = run(["sessions", "clear", "listed"], capsys)
@@ -154,3 +154,10 @@ def test_claude_command_full_context_keeps_tool_limits():
     assert "--safe-mode" not in cmd and "--append-system-prompt" in cmd
     assert cmd[cmd.index("--tools") + 1] == "WebSearch,WebFetch" and "--strict-mcp-config" in cmd
     assert cmd[cmd.index("--resume") + 1] == "id-1" and cmd[cmd.index("--model") + 1] == "opus"
+
+
+def test_pasted_text_argument(fake_cli, capsys):
+    text = "Accepted password for mlopez from 10.20.4.17 port 22"
+    code, out, err = run([text, "who logged in?", "--session", "t9"], capsys)
+    [call] = fake_cli()
+    assert code == 0 and "mlopez" not in call["stdin"] and "10.20.4.17" not in call["stdin"]

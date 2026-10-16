@@ -1,4 +1,4 @@
-"""[3] Get the text from a file, stdin or the clipboard (SPEC: input_reader.py).
+"""[3] Get the text from the command line, a file (--file) or stdin (SPEC: input_reader.py).
 
 Only checks size and binary content. Never writes the text anywhere.
 """
@@ -18,7 +18,7 @@ QUESTION_MARKER = "\n\n### QUESTION\n"
 class InputText:
     text: str               # input + QUESTION_MARKER + question
     question_offset: int    # where the question starts in text
-    source: str             # "file:<name>" | "stdin" | "clipboard" | "none"
+    source: str             # "text" | "file:<name>" | "stdin" | "none"
     warnings: list[str]
 
 
@@ -43,31 +43,18 @@ def _check_size(data: bytes, max_lines: int, max_bytes: int) -> None:
         raise InputError(f"Input is {lines:,} lines; the limit is {max_lines:,} (max_lines in config).")
 
 
-def _read_clipboard() -> bytes:
-    try:
-        import pyperclip
-        text = pyperclip.paste()
-    except Exception as e:  # pyperclip raises PyperclipException when no clipboard tool exists
-        hint = ""
-        if sys.platform.startswith("linux"):
-            hint = " Install xclip, xsel or wl-clipboard (sudo apt install xclip)."
-        raise InputError(f"Clipboard is not available: {e}.{hint}") from e
-    if not text:
-        raise InputError("The clipboard is empty.")
-    return text.encode("utf-8")
-
-
-def read(question: str, file: str | None, use_clipboard: bool, max_lines: int, max_bytes: int,
+def read(question: str, file: str | None, text: str | None, max_lines: int, max_bytes: int,
          stdin=None) -> InputText:
     """Read exactly one input source and append the question.
 
+    Sources: text passed on the command line (the default), --file PATH, or piped stdin.
     stdin is only used when it is not a terminal; an empty pipe counts as "no input".
+    The clipboard is never read.
     """
     stdin = stdin if stdin is not None else sys.stdin
     piped = stdin is not None and not _isatty(stdin)
-    sources = [s for s, on in (("file", file is not None), ("clipboard", use_clipboard)) if on]
-    if len(sources) > 1:
-        raise UsageError("Use only one input source: a file or --clip.")
+    if file is not None and text is not None:
+        raise UsageError("Use only one input source: text or --file, not both.")
 
     warnings: list[str] = []
     data: bytes | None = None
@@ -83,13 +70,11 @@ def read(question: str, file: str | None, use_clipboard: bool, max_lines: int, m
         if not data.strip():
             raise InputError(f"{file} is empty.")
         source = f"file:{p.name}"
-        if piped and _has_data(stdin):
-            raise UsageError("Use only one input source: a file or piped input, not both.")
-    elif use_clipboard:
-        data = _read_clipboard()
-        source = "clipboard"
-        if piped and _has_data(stdin):
-            raise UsageError("Use only one input source: --clip or piped input, not both.")
+    elif text is not None:
+        if not text.strip():
+            raise InputError("The text to analyze is empty.")
+        data = text.encode("utf-8")
+        source = "text"
     elif piped:
         raw = stdin.buffer.read() if hasattr(stdin, "buffer") else stdin.read()
         if isinstance(raw, str):
@@ -97,6 +82,9 @@ def read(question: str, file: str | None, use_clipboard: bool, max_lines: int, m
         if raw.strip():
             data = raw
             source = "stdin"
+    if source not in ("stdin", "none"):
+        if piped and _has_data(stdin):
+            raise UsageError("Use only one input source: text/--file or piped input, not both.")
 
     if not question or not question.strip():
         raise UsageError("A question is required.")
@@ -106,8 +94,8 @@ def read(question: str, file: str | None, use_clipboard: bool, max_lines: int, m
         _check_size(data, max_lines, max_bytes)
         body = _decode(data, warnings).rstrip("\n")
     q = question.replace("\r\n", "\n").strip()
-    text = body + QUESTION_MARKER + q
-    return InputText(text=text, question_offset=len(body) + len(QUESTION_MARKER), source=source,
+    combined = body + QUESTION_MARKER + q
+    return InputText(text=combined, question_offset=len(body) + len(QUESTION_MARKER), source=source,
                      warnings=warnings)
 
 
@@ -123,7 +111,7 @@ def _has_data(stream) -> bool:
 
     Used only to reject "file AND pipe" mistakes. On Windows this uses PeekNamedPipe. On Linux
     a pipe at EOF also looks readable to select(), so there is no reliable non-consuming check;
-    the piped data is simply ignored when a file or --clip is given.
+    the piped data is simply ignored when text or --file is given.
     """
     if sys.platform != "win32":
         return False

@@ -17,7 +17,7 @@ values in the answer locally. Real values never leave the machine.
 
 ## Scope
 ### In scope
-- Input from a file path, piped stdin, or the clipboard.
+- Input as text passed on the command line (the default), a file (`--file PATH`), or piped stdin.
 - Detection by regex rules, gitleaks secret rules, user-maintained lists, and GLiNER; optional local
   LLM pass (Ollama) behind a flag.
 - Consistent, typed placeholders per session; encrypted mapping storage.
@@ -35,7 +35,7 @@ values in the answer locally. Real values never leave the machine.
 - Pip/pipx packaging (run from the project folder).
 - Folder / multi-file input.
 - Pulling lists from AD/LDAP or database schemas.
-- Clipboard output (`--copy`).
+- Reading the clipboard (removed by user decision) and clipboard output (`--copy`).
 
 ### Later phase
 - `redact_hook.py`: Claude Code and Copilot CLI hook tripwires that reuse the final scan to block
@@ -45,9 +45,10 @@ values in the answer locally. Real values never leave the machine.
 
 ### Command line
 ```
-python redact_ask.py [FILE] "question" [options]
+python redact_ask.py "text to analyze" "question" [options]
+python redact_ask.py --file PATH "question" [options]
 <command> | python redact_ask.py "question" [options]
-python redact_ask.py --clip "question" [options]
+python redact_ask.py "question" [options]             # follow-up / question only
 
 Options:
   --to TARGET[:MODEL]   Override the configured target for this prompt
@@ -55,12 +56,13 @@ Options:
   --session NAME        Use a named session (default: one per current folder)
   --new-session         Discard the current session's mapping and conversation, start fresh
   --deep                Also run the local LLM detector (Ollama)
+  --file PATH           Read the text to analyze from a file
   --out FILE            Also write the restored answer to FILE
 
 python redact_ask.py sessions list
 python redact_ask.py sessions clear [NAME | --all]
 ```
-Exactly one input source (FILE, stdin, or `--clip`) is allowed per run. **The question text is
+Exactly one input source (text argument, `--file`, or stdin) is allowed per run. The clipboard is never read. **The question text is
 also redacted**: it is appended to the input as a separate section and goes through the whole
 pipeline.
 
@@ -87,7 +89,7 @@ Lists and mappings contain real sensitive values and are **never stored in the p
 |---|---|
 | 0 | Success |
 | 2 | Usage error (bad arguments, more than one input source) |
-| 3 | Input error (too large, unreadable, binary, empty clipboard) |
+| 3 | Input error (too large, unreadable, binary, empty text) |
 | 4 | Redaction aborted (final scan still failing after 2 retries; nothing sent) |
 | 5 | Cloud CLI error (not installed, not logged in, timeout, non-zero exit) |
 | 6 | Key or session storage error |
@@ -258,7 +260,7 @@ do. A script may only depend on `models.py`, `config.py`, and the scripts named 
 - **Must not:** read lists, mappings, or keys.
 
 ### [3] `input_reader.py` — get the text
-- **Input:** a file path, stdin, or the clipboard (`--clip`), plus the question string.
+- **Input:** text passed on the command line, a file path (`--file`), or piped stdin, plus the question string.
 - **Output:** one string: the input followed by the question in a clearly delimited section, with
   the offset where the question starts.
 - **Responsibilities:**
@@ -266,8 +268,9 @@ do. A script may only depend on `models.py`, `config.py`, and the scripts named 
   - Decode as UTF-8; on invalid bytes, replace them and warn. Refuse input that looks binary
     (contains NUL bytes).
   - Normalize line endings to `\n`.
-  - Clipboard: `pyperclip` (Windows built-in; Debian needs `xclip`, `xsel` or `wl-clipboard`).
-    Empty or unavailable clipboard → exit 3 with a message naming the missing package.
+  - Text argument: empty or whitespace-only text → exit 3. Very large pasted text is limited by
+    the OS command-line length (about 32,000 characters on Windows); use `--file` or a pipe for more.
+  - Never reads the clipboard.
 - **Must not:** write the text anywhere, or inspect its contents beyond size and binary checks.
 
 ### [4] `rules_detector.py` — fixed-format patterns
@@ -588,7 +591,8 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 |---|---|---|
 | Custom CLI wrapper, not hooks or a proxy | Only option that guarantees redaction runs before anything is sent; hooks can block but not rewrite, and don't see tool output | 2026-10-16 |
 | Python 3.11+, run from the project folder | GLiNER and the secret tooling are Python-native; no packaging needed | 2026-10-16 |
-| Inputs: file, stdin, clipboard (no folders) | Matches the user's workflows | 2026-10-16 |
+| Inputs: file, stdin, clipboard (no folders) — clipboard superseded by the next row | Matches the user's workflows | 2026-10-16 |
+| Default input is text passed on the command line; files need `--file`; `--clip` removed and the clipboard is never read | User decision | 2026-10-16 |
 | GLiNER called directly; no Presidio | Our scripts already merge and replace; fewer dependencies and a visible data flow | 2026-10-16 |
 | Gitleaks rules run in Python, not the binary | Avoids writing unredacted text to a temp file for the binary | 2026-10-16 |
 | Local LLM pass optional, off by default (`--deep`) | GLiNER first; LLM adds cost and latency | 2026-10-16 |
@@ -628,7 +632,7 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 | GLiNER model: `nvidia/gliner-pii` by default; `urchade/gliner_multi_pii-v1` kept as the alternative in config | Newest GLiNER PII model with the broadest type coverage (55+); best published results at threshold 0.3 | 2026-10-16 |
 
 ## Edge Cases & Failure Behavior
-- **More than one input source** (file and stdin, or `--clip` with a file) → exit 2.
+- **More than one input source** (text and `--file`, or either with piped stdin) → exit 2.
 - **Empty input** → exit 3. **Question only, no input** → allowed; the question is still redacted.
 - **Input too large** → exit 3 with the actual size and limit.
 - **Invalid UTF-8** → replace bad bytes, warn; **binary** → exit 3.
@@ -664,7 +668,7 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
   logged-in account's email address to the request context. It is the account's own email (already
   known to Anthropic), but it is not redacted and no option to turn it off was found.
 - **CPU-only speed** (Debian without a GPU) has not been measured.
-- **Debian** has not been tested yet (keyring, key-file fallback, clipboard).
+- **Debian** has not been tested yet (keyring, key-file fallback).
 - **Over-redaction:** union spans sometimes hide useful context (for example a whole connection
   string becomes one `<SECRET_n>`); acceptable under the over-redact decision, revisit if answers
   suffer.
