@@ -90,3 +90,16 @@ def test_off_by_default_types_are_still_reported(cfg):
     # merger drops these unless enabled; the detector reports them.
     r = found("vlan 120 uid=0 port=8443", cfg)
     assert ("VLAN", "120") in r and ("UID", "0") not in r and ("PORT", "8443") in r
+
+
+def test_netmask_sets_real_subnet_for_address_and_gateway(cfg):
+    text = ("   IPv4 Address. . . . . . . . . . . : 10.50.20.31\n"
+            "   Subnet Mask . . . . . . . . . . . : 255.255.254.0\n"
+            "   Default Gateway . . . . . . . . . : 10.50.21.1\n")
+    fs = {f.value: f for f in rules_detector.detect(text, cfg)}
+    assert fs["10.50.20.31"].subnet == fs["10.50.21.1"].subnet == "10.50.20.0/23"
+    assert "255.255.254.0" not in fs
+    fs = {f.value: f for f in rules_detector.detect("inet 192.168.8.20  netmask 255.255.252.0  broadcast 192.168.11.255", cfg)}
+    assert fs["192.168.8.20"].subnet == "192.168.8.0/22"
+    fs = {f.value: f for f in rules_detector.detect(" ip address 10.120.0.1 255.255.0.0", cfg)}
+    assert fs["10.120.0.1"].subnet == "10.120.0.0/16"

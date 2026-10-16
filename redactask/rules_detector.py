@@ -49,7 +49,11 @@ class _Collector:
 _IPV4 = r"(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)"
 IPV4_RE = re.compile(rf"(?<![\d.]){_IPV4}(?!\d|\.\d)")
 CIDR4_RE = re.compile(rf"(?<![\d.])({_IPV4})/(3[0-2]|[12]?\d)(?!\d)")
-IPV6_CAND_RE = re.compile(r"(?<![\w:.])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?:%[\w.]+)?(?:/(?:12[0-8]|1[01]\d|[1-9]?\d))?(?![\w:])")
+NETMASK_PAIR_RE = re.compile(
+    rf"IPv4 Address[ .]*:\s*(?P<ip>{_IPV4})(?:\(Preferred\))?[ \t]*\r?\n[ \t]*Subnet Mask[ .]*:\s*(?P<mask>{_IPV4})"
+    rf"|\binet (?:addr:)?(?P<ip2>{_IPV4})\s+(?:netmask|Mask:)\s*(?P<mask2>{_IPV4})"
+    rf"|\bip address (?P<ip3>{_IPV4}) (?P<mask3>{_IPV4})", re.IGNORECASE)
+IPV6_CAND_RE =re.compile(r"(?<![\w:.])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?:%[\w.]+)?(?:/(?:12[0-8]|1[01]\d|[1-9]?\d))?(?![\w:])")
 
 
 def _is_netmask(ip: ipaddress.IPv4Address) -> bool:
@@ -95,6 +99,16 @@ def _ips(c: _Collector, prefix_v4: int, subnets: list) -> None:
             continue
         known.append(net)
         c.add(m.start(), m.end(), "SUBNET")
+
+    # Address + netmask pairs (ipconfig, ifconfig/ip, Cisco) give the real network size, so the
+    # address and its gateway land in the same <SUBNET_n> instead of a guessed /24.
+    for m in NETMASK_PAIR_RE.finditer(text):
+        ip = m.group("ip") or m.group("ip2") or m.group("ip3")
+        mask = m.group("mask") or m.group("mask2") or m.group("mask3")
+        try:
+            known.append(ipaddress.ip_network(f"{ip}/{mask}", strict=False))
+        except ValueError:
+            continue
 
     for m in IPV4_RE.finditer(text):
         ip = ipaddress.ip_address(m.group(0))
