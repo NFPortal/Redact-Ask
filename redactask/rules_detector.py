@@ -251,8 +251,11 @@ DB_KV_RE = re.compile(r"\b(?:database|initial catalog|dbname|db[_ -]?name)\s*=\s
 SQL_SELECT_LIST_RE = re.compile(r"\bSELECT\s+(?:DISTINCT\s+|TOP\s+\d+\s+)?([\s\S]+?)\s+FROM\b", I)
 SQL_COND_COL_RE = re.compile(r"(?:\b(?:WHERE|AND|OR|ON|SET|BY|HAVING)\s+|,\s*)((?:[\w$]+\.)?[\w$]+)\s*(?:=|<>|!=|<=|>=|<|>|\bLIKE\b|\bIN\b|\bIS\b|\bBETWEEN\b|,|\s+(?:ASC|DESC)\b|$)", I)
 SQL_INSERT_COLS_RE = re.compile(rf"\bINSERT\s+INTO\s+{_IDENT}\s*\(([^)]*)\)", I)
-# "FROM hr.employees e" / "JOIN payroll AS p": the alias (e, p)
-SQL_ALIAS_RE = re.compile(rf"\b(?:FROM|JOIN)\s+{_IDENT}\s+(?:AS\s+)?([A-Za-z_]\w*)\b", I)
+# "FROM hr.employees e" / "JOIN payroll AS p": the alias (e, p). The table may already be a
+# placeholder when the final scan re-checks redacted text ("FROM <TABLE_2> si").
+SQL_ALIAS_RE = re.compile(rf"\b(?:FROM|JOIN)\s+(?:{_IDENT}|<[A-Z][A-Z_]*_\d+>)\s+(?:AS\s+)?([A-Za-z_]\w*)\b", I)
+# "SUM(x) AS total": a column alias
+SQL_COL_ALIAS_RE = re.compile(r"\bAS\s+([A-Za-z_]\w*)\b", I)
 # One string literal on one line; '' inside is an escaped quote, and a bare '' is an empty string.
 SQL_STRING_RE = re.compile(r"N?'((?:[^'\n]|'')*)'")
 SQL_KEYWORDS = {
@@ -319,11 +322,35 @@ def _host_is_internal(host: str, suffixes: list[str]) -> bool:
     return any(host.endswith(s) for s in suffixes) or host.endswith(".ts.net")
 
 
+def _sql_aliases(s: str) -> set[str]:
+    """Table and column aliases named in one statement (casefolded), keywords excluded."""
+    names = [m.group(1) for m in SQL_ALIAS_RE.finditer(s)] + [m.group(1) for m in SQL_COL_ALIAS_RE.finditer(s)]
+    for m in SQL_SELECT_LIST_RE.finditer(s):    # "SELECT si.Carrier carrier_name": alias without AS
+        for item in m.group(1).split(","):
+            im = re.match(r"\s*(?:[\w$]+\.)?[\w$]+\s+([\w$]+)\s*$", item)
+            if im:
+                names.append(im.group(1))
+    return {n.casefold() for n in names if n.casefold() not in SQL_KEYWORDS}
+
+
+def sql_alias_spans(text: str) -> set[tuple[int, int]]:
+    """Every occurrence of a table or column alias inside a SQL statement. Aliases are the
+    query's own short names (si, adt, total), not names from the database: never redacted."""
+    spans = set()
+    for stmt in SQL_STMT_RE.finditer(text):
+        aliases = _sql_aliases(stmt.group(0))
+        for w in re.finditer(r"(?<![<.\w$])[\w$]+", stmt.group(0)):
+            if w.group(0).casefold() in aliases:
+                spans.add((stmt.start() + w.start(), stmt.start() + w.end()))
+    return spans
+
+
 def _sql(c: _Collector) -> None:
     text = c.text
     for stmt in SQL_STMT_RE.finditer(text):
         base = stmt.start()
         s = stmt.group(0)
+        aliases = _sql_aliases(s)
 
         def add_ident(m: re.Match, group: int, type_: str) -> None:
             ident = m.group(group)
@@ -353,7 +380,9 @@ def _sql(c: _Collector) -> None:
                 im = re.match(r"\s*(?:([\w$]+)\.)?([\w$]+)\s*(?:(?:AS\s+)?([\w$]+))?\s*$", item, I)
                 if not im:
                     continue
-                for g in (1, 2, 3):
+                for g in (1, 2):    # group 3 is a column alias: kept
+                    if g == 1 and im.group(g) and im.group(g).casefold() in aliases:
+                        continue
                     if im.group(g) and im.group(g).lower() not in SQL_KEYWORDS and not im.group(g).isdigit():
                         c.add(off + part.start() + im.start(g), off + part.start() + im.end(g),
                               "TABLE" if g == 1 else "COLUMN")
@@ -363,19 +392,18 @@ def _sql(c: _Collector) -> None:
                 continue
             if "." in ident:    # table.column -> separate TABLE and COLUMN, like everywhere else
                 dot = m.start(1) + ident.index(".")
-                c.add(base + m.start(1), base + dot, "TABLE")
+                if ident[:ident.index(".")].casefold() not in aliases:
+                    c.add(base + m.start(1), base + dot, "TABLE")
                 c.add(base + dot + 1, base + m.end(1), "COLUMN")
             else:
                 c.add(base + m.start(1), base + m.end(1), "COLUMN")
         # Any table.column reference to a table named in this statement (inside functions,
         # joins, expressions): the column is redacted too.
         tables = {t.group(1).split(".")[-1].strip("[]`\"").casefold() for t in SQL_TABLE_RE.finditer(s)}
-        aliases = {a.group(1).casefold() for a in SQL_ALIAS_RE.finditer(s)
-                   if a.group(1).casefold() not in SQL_KEYWORDS}
         for r in re.finditer(r"\b([\w$]+)\.([\w$]+)\b", s):
             owner, col = r.group(1).casefold(), r.group(2)
             if (owner in tables or owner in aliases) and col.casefold() not in SQL_KEYWORDS:
-                if owner in tables:          # short aliases like e/p carry no information; keep them
+                if owner not in aliases:     # aliases (e, p, si) are the query's own names; keep them
                     c.add(base + r.start(1), base + r.end(1), "TABLE")
                 c.add(base + r.start(2), base + r.end(2), "COLUMN")
     c.regex(DB_KV_RE, "DB", 1)

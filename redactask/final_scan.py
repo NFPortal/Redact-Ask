@@ -12,6 +12,7 @@ from dataclasses import replace
 
 from . import lists_detector, rules_detector, secrets_detector
 from .lists_detector import ListData
+from .merger import trim_sql_aliases
 from .models import CATALOG, Finding, Mapping, PLACEHOLDER_RE, inside_any, placeholder_spans
 
 DETECTOR = "final_scan"
@@ -99,11 +100,17 @@ def scan(text: str, mapping: Mapping, config, lists: ListData, automaton=None) -
     found += _encoded_leaks(text, mapping, config, lists, automaton)
 
     ph = placeholder_spans(text)
+    aliases = rules_detector.sql_alias_spans(text)
     out = []
     for f in found:
         if not config.type_enabled(f.type):
             continue
         if inside_any(f.start, f.end, ph):
+            continue
+        # Same rule as the merger: a SQL alias isn't a leak, even if an older run put it in the
+        # mapping (alone, or as part of "ShipmentInfo si").
+        f = trim_sql_aliases(text, f, aliases)
+        if f is None:
             continue
         out.append(replace(f, detector=DETECTOR))
     return out

@@ -658,6 +658,7 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 | Merged overlaps: a containing finding keeps its type (IMAGE over HOST) unless it is generic (ENV_VALUE, SQL_VALUE, ...) or the inner one is a secret | Keeps placeholders meaningful while never downgrading a secret | 2026-10-16 |
 | `REDACT_ASK_HOME` puts all user folders in one place; tests replace the passphrase prompt | Used by the tests so they never touch real data, the real keyring or a real terminal | 2026-10-16 |
 | GLiNER model: `nvidia/gliner-pii` by default; `urchade/gliner_multi_pii-v1` kept as the alternative in config | Newest GLiNER PII model with the broadest type coverage (55+); best published results at threshold 0.3 | 2026-10-16 |
+| SQL table and column aliases (`FROM ShipmentInfo si`, `SUM(x) AS total`) are never redacted, by any detector or the final scan (secrets excepted); a finding that runs into an alias (`ShipmentInfo si`) is cut back to the table name | They are the query's own names, and redacting them made the query unreadable (`si.Col` became `<TABLE_1>.Col` in some places only) | 2026-10-16 |
 
 ## Edge Cases & Failure Behavior
 - **More than one input source** (text and `--file`, or either with piped stdin) → exit 2.
@@ -675,7 +676,9 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 - **Placeholder-like text already in the input** (`<USER_1>` in the original) → escape it before
   masking so it can't be confused with a real placeholder, and restore it in the output.
 - **The same value with different types** (e.g. a username that is also a hostname) → one
-  placeholder per value; type chosen by priority in [9].
+  placeholder per value; type chosen by priority in [9]. Exception: a SQL name (`DB`, `TABLE`,
+  `COLUMN`, `PROC`) and a SQL literal (`SQL_VALUE`) with the same text get separate placeholders
+  (`sm.Status = 'Status'` → `sm.<COLUMN_n> = '<SQL_VALUE_n>'`).
 - **Overlapping detections** → union span, highest-priority type.
 - **Cloud answer invents placeholders** → left as-is with a warning.
 - **Cloud CLI not logged in / not installed / timeout** → exit 5; the audit entry is marked `error`.

@@ -73,6 +73,19 @@ def test_sql_names(cfg):
     assert not any(t == "TABLE" for t, _ in found("Accepted publickey for bob from 10.0.0.1", cfg))
 
 
+def test_sql_aliases_are_kept(cfg):
+    sql = ("SELECT si.ShipmentId, SUM(adt.Qty) AS total_qty, si.Carrier carrier_name\nFROM ShipmentInfo si\n"
+           "INNER JOIN AuditDetail AS adt on si.ShipmentId = adt.RefId\n"
+           "WHERE adt.EventType = 'X' AND (si.Code = 'A1' OR adt.Code = 'B2')\n")
+    r = found(sql, cfg)
+    assert ("TABLE", "ShipmentInfo") in r and ("TABLE", "AuditDetail") in r
+    assert ("COLUMN", "ShipmentId") in r and ("COLUMN", "RefId") in r and ("COLUMN", "Code") in r
+    for alias in ("si", "adt", "total_qty", "carrier_name"):
+        assert not any(v == alias for _, v in r), alias
+    spans = rules_detector.sql_alias_spans(sql)
+    assert {sql[s:e] for s, e in spans} == {"si", "adt", "total_qty", "carrier_name"}
+
+
 def test_identity_numbers(cfg):
     r = found("card 4111 1111 1111 1111 ssn 523-41-8876 iban GB82 WEST 1234 5698 7654 32", cfg)
     assert ("CARD", "4111 1111 1111 1111") in r

@@ -37,7 +37,26 @@ def test_disabled_types_and_placeholders_dropped(cfg):
     assert merger.merge(text, fs, cfg) == []
 
 
+def test_sql_alias_cut_from_a_finding_that_runs_into_it(cfg):
+    text = "SELECT si.Id\nFROM ShipmentInfo si\nWHERE si.Id = 1\n"
+    wide = F(text, "ShipmentInfo si", "TABLE", "gliner")
+    alone = F(text, "si", "TABLE", "final_scan", nth=1)
+    [m] = merger.merge(text, [wide, alone], cfg)
+    assert (m.value, m.type) == ("ShipmentInfo", "TABLE")
+
+
 # ---- masker ----------------------------------------------------------------
+def test_sql_name_and_literal_with_same_text_get_different_placeholders():
+    m = Mapping()
+    text = "WHERE adt.Kind = 'Status' AND sm.Status = 'Open'"
+    fs = [F(text, "Kind", "COLUMN"), F(text, "Status", "SQL_VALUE"), F(text, "Status", "COLUMN", nth=1),
+          F(text, "Open", "SQL_VALUE")]
+    out = masker.mask(text, fs, m)
+    assert out == "WHERE adt.<COLUMN_1> = '<SQL_VALUE_1>' AND sm.<COLUMN_2> = '<SQL_VALUE_2>'"
+    # other types still share: a value seen as USER and HOST keeps one placeholder
+    assert masker.placeholder_for(m, "USER", "jdoe") == masker.placeholder_for(m, "HOST", "jdoe")
+
+
 def test_consistent_placeholders_and_subnets():
     m = Mapping()
     text = "jdoe from 10.1.2.3; JDOE again from 10.1.2.9"

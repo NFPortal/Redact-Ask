@@ -114,6 +114,16 @@ def test_final_scan_finds_mapping_leaks_and_ignores_placeholders(cfg):
     assert final_scan.describe(text, left) == ["line 1, column 18: PERSON"]
 
 
+def test_final_scan_ignores_sql_aliases_already_in_the_mapping(cfg):
+    """An older run put the alias "si" in the session mapping; it must not be re-redacted."""
+    m = Mapping()
+    masker.placeholder_for(m, "TABLE", "si")
+    masker.placeholder_for(m, "TABLE", "ShipmentInfo")
+    text = "SELECT si.<COLUMN_1>\nFROM <TABLE_2> si\nWHERE si.<COLUMN_2> = 1 AND ShipmentInfo.x = 2\n"
+    left = final_scan.scan(text, m, cfg, ListData())
+    assert {(f.type, f.value) for f in left} == {("TABLE", "ShipmentInfo")}
+
+
 def test_final_scan_catches_rule_leftovers(cfg):
     left = final_scan.scan("token=ghp_IWPU7wVJZKPqqeTi8d5ku0fmC8I1q4dJjBwM", Mapping(), cfg, ListData())
     assert left

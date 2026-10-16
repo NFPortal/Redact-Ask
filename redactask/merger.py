@@ -5,7 +5,7 @@ Never changes text.
 """
 from __future__ import annotations
 
-from .rules_detector import COMMON_WORDS
+from .rules_detector import COMMON_WORDS, sql_alias_spans
 from .models import CATALOG, Finding, inside_any, placeholder_spans, priority
 
 MIN_LENGTH = 2
@@ -46,8 +46,36 @@ def _pick_type(a: Finding, b: Finding) -> Finding:
     return outer
 
 
+def trim_sql_aliases(text: str, f: Finding, aliases: set[tuple[int, int]]) -> Finding | None:
+    """Keep SQL aliases (si, adt) out of a non-secret finding: drop it if it is just an alias,
+    cut the alias off if the finding runs into one ("ShipmentInfo si" -> "ShipmentInfo")."""
+    info = CATALOG.get(f.type)
+    if info and info.group == "secrets":
+        return f
+    start, end = f.start, f.end
+    for a_start, a_end in sorted(aliases):
+        if not (a_start < end and a_end > start):
+            continue
+        if a_start <= start and a_end >= end:
+            return None
+        if a_start <= start:                 # alias at the front
+            start = a_end
+        elif a_end >= end:                   # alias at the back
+            end = a_start
+    while start < end and text[start].isspace():
+        start += 1
+    while end > start and text[end - 1].isspace():
+        end -= 1
+    if end <= start:
+        return None
+    if (start, end) == (f.start, f.end):
+        return f
+    return Finding(start, end, text[start:end], f.type, f.detector, f.confidence, f.subnet)
+
+
 def merge(text: str, findings: list[Finding], config) -> list[Finding]:
     ph = placeholder_spans(text)
+    aliases = sql_alias_spans(text)
     kept: list[Finding] = []
     for f in findings:
         if not config.type_enabled(f.type):
@@ -57,6 +85,10 @@ def merge(text: str, findings: list[Finding], config) -> list[Finding]:
         # "AND", "SELECT", "error"... are never sensitive on their own (secrets excepted).
         info = CATALOG.get(f.type)
         if (info is None or info.group != "secrets") and text[f.start:f.end].strip().casefold() in COMMON_WORDS:
+            continue
+        # SQL aliases (si, adt) are the query's own names, whichever detector found them.
+        f = trim_sql_aliases(text, f, aliases)
+        if f is None or f.end - f.start < MIN_LENGTH:
             continue
         # Findings inside (or overlapping) an existing placeholder are already redacted.
         if inside_any(f.start, f.end, ph):

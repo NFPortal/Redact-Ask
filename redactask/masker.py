@@ -5,7 +5,7 @@ mapping (that is session_store.py).
 """
 from __future__ import annotations
 
-from .models import CATALOG, Finding, Mapping, PLACEHOLDER_LIKE_RE
+from .models import CATALOG, Finding, Mapping, PLACEHOLDER_LIKE_RE, PLACEHOLDER_RE
 
 
 def _key(type_: str, value: str) -> str:
@@ -20,11 +20,23 @@ def _prefix_ci(prefix: str) -> bool:
     return info is None or info.case_insensitive
 
 
+_SQL_NAMES = {"DB", "TABLE", "COLUMN", "PROC"}
+
+
+def _kept_apart(type_: str, ph: str) -> bool:
+    """A SQL name and a SQL literal never share a placeholder, even with the same text:
+    `sm.Status = 'Status'` reads as `sm.<COLUMN_n> = '<SQL_VALUE_n>'`."""
+    m = PLACEHOLDER_RE.fullmatch(ph)
+    info = CATALOG.get(type_)
+    pair = {info.prefix if info else type_, m.group(1) if m else ""}
+    return "SQL_VALUE" in pair and bool(pair & _SQL_NAMES)
+
+
 def placeholder_for(mapping: Mapping, type_: str, value: str) -> str:
     """Existing placeholder for this value, or a new <PREFIX_N>."""
     key = _key(type_, value)
     ph = mapping.forward.get(key)
-    if ph:
+    if ph and not _kept_apart(type_, ph):
         return ph
     # The same value seen earlier under another type keeps its first placeholder (SPEC edge case).
     # Exact same text always matches; a case-only difference matches only when both types
@@ -34,6 +46,8 @@ def placeholder_for(mapping: Mapping, type_: str, value: str) -> str:
     loose = value.casefold()
     for k, existing in mapping.forward.items():
         real = mapping.reverse.get(existing, "")
+        if _kept_apart(type_, existing):
+            continue
         if real == value or (new_ci and _prefix_ci(k.split(":", 1)[0]) and real.casefold() == loose):
             mapping.forward[key] = existing
             return existing
