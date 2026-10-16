@@ -46,12 +46,14 @@ values in the answer locally. Real values never leave the machine.
 
 ### Command line
 ```
-python redact_ask.py "text to analyze" "question" [options]
-python redact_ask.py --file PATH "question" [options]
-<command> | python redact_ask.py "question" [options]
-python redact_ask.py "question" [options]             # follow-up / question only
+python redact_ask.py "text to analyze" -q "question" [options]
+python redact_ask.py --file PATH -q "question" [options]
+<command> | python redact_ask.py -q "question" [options]
+python redact_ask.py -q "question" [options]           # follow-up / question only
 
 Options:
+  -q, --query QUESTION  The question (required). Text without -q is always the text to analyze,
+                        never the question, so a mistyped command can't be sent as one.
   --to TARGET[:MODEL]   Override the configured target for this prompt
                         (claude | claude:opus | copilot | copilot:<model>)
   --session NAME        Use a named session (default: one per current folder)
@@ -641,6 +643,7 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 | Final scan decodes hex/base64 blobs and redacts any that hide sensitive values (`ENCODED`) | A Windows event's binary data leaked a server name | 2026-10-16 |
 | Session key derived from a passphrase typed each run; no stored key (Credential Manager / key file removed, old sessions migrated) | An AI agent running as the user decrypted the mapping while debugging; a stored key can't stop that | 2026-10-16 |
 | `reset-passphrase` command deletes all sessions and sets a new passphrase, confirmed by typing RESET | Forgetting the passphrase shouldn't require manual file deletion | 2026-10-16 |
+| The question must be given with `-q`/`--query`; a bare argument is only ever the text to analyze | A mistyped command (`rt-passphrase`) was treated as a question; no guessing which words are commands | 2026-10-16 |
 | `sessions show` (print the mapping) not added | User decision: no tool that prints real values | 2026-10-16 |
 | Web search/fetch risk accepted | Only placeholders can leave via search queries | 2026-10-16 |
 | Cloud CLI runs in a per-session empty folder instead of a fresh temp folder | Claude Code resumes conversations per working folder | 2026-10-16 |

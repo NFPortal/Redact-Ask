@@ -2,7 +2,7 @@
 
 Only parses arguments and calls the other scripts in the order of the SPEC data flow.
 
-    python redact_ask.py ["text to analyze"] "question" [--file PATH] [--to TARGET[:MODEL]]
+    python redact_ask.py ["text to analyze" | --file PATH] -q "question" [--to TARGET[:MODEL]]
                          [--session NAME] [--new-session] [--deep] [--restore] [--out FILE]
     python redact_ask.py sessions list
     python redact_ask.py sessions clear [NAME | --all]
@@ -81,8 +81,9 @@ def _parser() -> argparse.ArgumentParser:
         epilog="Sessions: python redact_ask.py sessions list | sessions clear [NAME | --all]\n"
                "Forgot the passphrase: python redact_ask.py reset-passphrase",
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("args", nargs="+", metavar="[TEXT] QUESTION",
-                   help="optional text to analyze (pasted in quotes), then the question")
+    p.add_argument("text", nargs="?", metavar="TEXT",
+                   help="text to analyze, pasted in quotes (or use --file or pipe it in)")
+    p.add_argument("-q", "--query", metavar="QUESTION", help="the question to ask (required)")
     p.add_argument("--file", metavar="PATH", help="read the text to analyze from a file instead")
     p.add_argument("--to", metavar="TARGET[:MODEL]", help="claude | copilot, optionally with a model (claude:opus)")
     p.add_argument("--session", metavar="NAME", help="named session (default: one per current folder)")
@@ -153,9 +154,10 @@ def cmd_sessions(argv: list[str]) -> int:
 
 def cmd_ask(argv: list[str]) -> int:
     a = _parser().parse_args(argv)
-    if len(a.args) > 2:
-        raise UsageError("Expected [\"text\"] \"question\" (or --file PATH \"question\"). Put each in quotes.")
-    text, question = (a.args[0], a.args[1]) if len(a.args) == 2 else (None, a.args[0])
+    if not a.query or not a.query.strip():
+        raise UsageError('a question is required: -q "your question". Text without -q is the text to analyze, '
+                         'never the question. Commands: sessions, reset-passphrase.')
+    text, question = a.text, a.query
 
     cfg = config.load()
     for w in cfg.warnings:
