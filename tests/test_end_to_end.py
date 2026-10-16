@@ -216,6 +216,15 @@ def test_preview_is_on_by_default_and_can_be_turned_off(fake_cli, capsys, monkey
     assert not asked and len(fake_cli()) == 1             # preview = false: sent without asking
 
 
+def test_default_preview_skipped_when_nothing_redacted(fake_cli, capsys, monkeypatch):
+    asked = []
+    monkeypatch.setattr(output_writer, "confirm", lambda m: asked.append(m) or "n")
+    code, _, _ = run(["the build is slow", "-q", "why?", "--session", "p6"], capsys)
+    assert code == 0 and not asked and len(fake_cli()) == 1          # nothing redacted: sent without asking
+    run(["the build is slow", "-q", "why?", "--preview", "--session", "p7"], capsys)
+    assert asked and len(fake_cli()) == 1                            # explicit --preview still asks
+
+
 def test_preview_flag_still_asks_when_config_is_false(fake_cli, capsys, monkeypatch, isolated_home):
     config.load()
     cfg_path = config.dirs().config / "config.toml"

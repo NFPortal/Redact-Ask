@@ -63,7 +63,8 @@ Options:
   --restore             Show the answer with placeholders replaced by the real values
   --out FILE            Also write the answer (raw, or restored with --restore) to FILE
   --preview             Show the exact redacted text and ask "Send? [y/N]" before sending
-                        (on by default: config `preview = true`; set it to false to send without asking)
+                        (on by default: config `preview = true`; set it to false to send without asking;
+                        the default preview is skipped when nothing was redacted, --preview always asks)
   --dry-run             Show the exact redacted text and stop; nothing is sent
 
 python redact_ask.py sessions list
@@ -650,6 +651,7 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 | The question must be given with `-q`/`--query`; a bare argument is only ever the text to analyze | A mistyped command (`rt-passphrase`) was treated as a question; no guessing which words are commands | 2026-10-16 |
 | `--preview` (confirm before sending, answer read from the console; cancel logged as `cancelled`) and `--dry-run` (show and stop, nothing logged); `preview = true` in config makes preview the default | User wants to see the redacted text before it leaves the machine | 2026-10-16 |
 | Preview on by default (`preview = true`) | User decision | 2026-10-16 |
+| The default preview is skipped when nothing was redacted (an explicit `--preview` still asks) | Nothing sensitive to check, so asking is just friction | 2026-10-16 |
 | Every redaction type is listed in `[types]` with its default and can be turned on or off, including the former "always" types (turning one of those off prints a warning on every run); only the internal `LITERAL` escaping can't be turned off | User wants to allow everything or redact everything from the config | 2026-10-16 |
 | `sessions show` (print the mapping) not added | User decision: no tool that prints real values | 2026-10-16 |
 | Web search/fetch risk accepted | Only placeholders can leave via search queries | 2026-10-16 |

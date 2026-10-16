@@ -205,7 +205,7 @@ def cmd_ask(argv: list[str]) -> int:
         output_writer.write(prompt)
         _err("dry run: nothing was sent.")
         return EXIT_OK
-    if a.preview or cfg.preview:
+    if a.preview or (cfg.preview and counts):     # the default preview is skipped when nothing was redacted
         output_writer.show_preview(prompt)
         if output_writer.confirm(f"Send this to {tool}? [y/N] ").lower() not in ("y", "yes"):
             run_id = audit.start(prompt, tool, model, session.id, counts, result.retries, inp.source,
