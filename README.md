@@ -1,7 +1,8 @@
 # redact-ask
 
-Redacts logs, code and config on your machine, sends only the redacted text to Claude Code or
-GitHub Copilot CLI, and puts the real values back into the answer. See `SPEC.md` for the design.
+Redacts logs, code and config on your machine and sends only the redacted text to Claude Code or
+GitHub Copilot CLI. The answer is shown as the model wrote it (with placeholders); add `--restore`
+to see it with the real values put back. See `SPEC.md` for the design.
 
 ## Setup (once)
 
@@ -30,7 +31,7 @@ Get-Content app.log | .venv\Scripts\python redact_ask.py "Why are logins failing
 ```
 
 Options: `--to TARGET[:MODEL]`, `--session NAME`, `--new-session`, `--deep` (local Ollama pass),
-`--out FILE`, `--file PATH`. The clipboard is never read.
+`--restore`, `--out FILE`, `--file PATH`. The clipboard is never read.
 
 ## Your files
 

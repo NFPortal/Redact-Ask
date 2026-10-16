@@ -3,7 +3,7 @@
 Only parses arguments and calls the other scripts in the order of the SPEC data flow.
 
     python redact_ask.py ["text to analyze"] "question" [--file PATH] [--to TARGET[:MODEL]]
-                         [--session NAME] [--new-session] [--deep] [--out FILE]
+                         [--session NAME] [--new-session] [--deep] [--restore] [--out FILE]
     python redact_ask.py sessions list
     python redact_ask.py sessions clear [NAME | --all]
 """
@@ -85,7 +85,9 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--session", metavar="NAME", help="named session (default: one per current folder)")
     p.add_argument("--new-session", action="store_true", help="forget this session's mapping and conversation")
     p.add_argument("--deep", action="store_true", help="also run the local LLM detector (Ollama)")
-    p.add_argument("--out", metavar="FILE", help="also write the restored answer to FILE")
+    p.add_argument("--restore", action="store_true",
+                   help="show the answer with placeholders replaced by the real values (default: as the model wrote it)")
+    p.add_argument("--out", metavar="FILE", help="also write the answer to FILE")
     return p
 
 
@@ -177,11 +179,14 @@ def cmd_ask(argv: list[str]) -> int:
     session.conversations[tool] = cloud.conversation_id
     store.save(session)
 
-    # [16] [17] restore and show
-    restored = unmasker.unmask(cloud.answer, session.mapping)
-    for ph in restored.unknown:
-        _err(f"the answer mentions {ph}, which isn't a known placeholder; left as-is.")
-    output_writer.write(restored.text, a.out)
+    # [16] [17] show the answer as the model wrote it, or with real values restored (--restore)
+    answer = cloud.answer
+    if a.restore:
+        restored = unmasker.unmask(cloud.answer, session.mapping)
+        for ph in restored.unknown:
+            _err(f"the answer mentions {ph}, which isn't a known placeholder; left as-is.")
+        answer = restored.text
+    output_writer.write(answer, a.out)
 
     # [18] grow the lists
     learner.run(escaped, result.findings, lists, d.lists)

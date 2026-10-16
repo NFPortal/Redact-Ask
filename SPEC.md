@@ -5,13 +5,14 @@ _Last updated: 2026-10-16_
 ## Goal
 A local command-line tool that redacts sensitive data (credentials, identities, network and
 infrastructure identifiers, database names, etc.) from logs, code and other text **before** it is
-sent to a cloud AI CLI (Claude Code or GitHub Copilot CLI) for analysis, then restores the real
+sent to a cloud AI CLI (Claude Code or GitHub Copilot CLI) for analysis, and can restore the real
 values in the answer locally. Real values never leave the machine.
 
 ## Users & Workflow
 - Single user (the author), technical, working in a terminal on **Windows 11** and **Debian**.
 - Typical use: copy or point at a log/code snippet, ask a question, get an answer from Claude or
-  Copilot with real values restored. Follow-up questions continue the same cloud conversation.
+  Copilot (as written, with placeholders; `--restore` puts the real values back). Follow-up questions
+  continue the same cloud conversation.
 - Cloud access is through the user's existing **Claude Code** and **GitHub Copilot CLI**
   subscriptions, called in non-interactive mode (`claude -p`, `copilot -p`).
 
@@ -23,7 +24,7 @@ values in the answer locally. Real values never leave the machine.
 - Consistent, typed placeholders per session; encrypted mapping storage.
 - Fail-closed final scan with automatic re-redaction (max 2 retries).
 - Sending to Claude Code or Copilot CLI in an isolated temp folder with web tools only.
-- Restoring real values in the answer; printing to terminal and optional `--out` file.
+- Printing the answer as the model wrote it (placeholders); `--restore` restores real values; optional `--out` file.
 - Audit log of what left the machine (redacted only).
 - Post-run approval prompt to add newly detected values to the lists.
 - Session management commands (list, clear, expiry).
@@ -57,7 +58,8 @@ Options:
   --new-session         Discard the current session's mapping and conversation, start fresh
   --deep                Also run the local LLM detector (Ollama)
   --file PATH           Read the text to analyze from a file
-  --out FILE            Also write the restored answer to FILE
+  --restore             Show the answer with placeholders replaced by the real values
+  --out FILE            Also write the answer (raw, or restored with --restore) to FILE
 
 python redact_ask.py sessions list
 python redact_ask.py sessions clear [NAME | --all]
@@ -70,7 +72,8 @@ pipeline.
 - Up to **5,000 lines or 1 MB**, whichever comes first (configurable). Larger input is refused.
 
 ### Output
-- Restored answer on stdout; optionally also written to `--out FILE`.
+- The model's answer on stdout, with placeholders by default or real values with `--restore`;
+  optionally also written to `--out FILE`.
 - Status and warnings on stderr (counts per type, retries, unknown placeholders).
 
 ### Files and locations (via `platformdirs`)
@@ -459,7 +462,7 @@ do. A script may only depend on `models.py`, `config.py`, and the scripts named 
   - Missing CLI, not logged in, non-zero exit, or `cloud_timeout_seconds` reached → exit 5.
 - **Must not:** receive the `Mapping`, raw text, or real values.
 
-### [16] `unmasker.py` — restore real values
+### [16] `unmasker.py` — restore real values (only with `--restore`)
 - **Input:** answer text, the session `Mapping`.
 - **Output:** answer with real values.
 - **Responsibilities:**
@@ -470,7 +473,7 @@ do. A script may only depend on `models.py`, `config.py`, and the scripts named 
 - **Must not:** write anything to disk.
 
 ### [17] `output_writer.py` — show the answer
-- **Input:** restored answer, optional `--out` path.
+- **Input:** the answer (raw, or restored with `--restore`), optional `--out` path.
 - **Output:** stdout, and the file if requested (UTF-8, overwrites with a warning if it exists).
 - **Must not:** write the answer anywhere else.
 
@@ -579,7 +582,8 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 - [ ] Nothing is sent when any stage before `cloud_runner` fails (one test per failure path).
 - [ ] The same value gets the same placeholder across two runs in one session; a different session
       gets independent numbering.
-- [ ] Restored answers contain the original values for every known placeholder.
+- [ ] By default the answer is printed exactly as the model wrote it; with `--restore` it contains
+      the original values for every known placeholder.
 - [ ] Works on Windows 11 and Debian (with and without a keyring service).
 - [ ] The cloud CLI cannot read local files or run commands (verified by asking it to read a known
       file and checking that it can't).
@@ -607,7 +611,8 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 | Follow-ups continue the same cloud conversation | Cloud model keeps context | 2026-10-16 |
 | Default target in config; `--to target[:model]` overrides per prompt | User preference | 2026-10-16 |
 | Cloud CLI runs in an empty temp folder with web search/fetch only | Local tools could read unredacted files and bypass redaction | 2026-10-16 |
-| Real values restored in the answer; printed to stdout, optional `--out` | User preference | 2026-10-16 |
+| Real values restored in the answer; printed to stdout, optional `--out` — superseded by the next row | User preference | 2026-10-16 |
+| Default output is the model's answer as written (placeholders); `--restore` shows real values | User decision | 2026-10-16 |
 | New GLiNER/LLM values approved interactively before being added to lists | Lists stay accurate without manual editing | 2026-10-16 |
 | Audit log stores redacted text and redacted answer plus metadata | Shows exactly what left the machine | 2026-10-16 |
 | Input limit 5,000 lines / 1 MB | Keeps runs fast; matches typical use | 2026-10-16 |

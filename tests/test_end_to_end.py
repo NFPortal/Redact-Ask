@@ -50,7 +50,7 @@ def run(argv, capsys):
 
 def test_round_trip_restores_values_and_sends_only_redacted(fake_cli, capsys, tmp_path):
     log = CORPUS / "syslog_auth.log"
-    code, out, err = run(["--file", str(log), "What happened?", "--session", "t1"], capsys)
+    code, out, err = run(["--file", str(log), "What happened?", "--session", "t1", "--restore"], capsys)
     assert code == 0, err
     [call] = fake_cli()
     for v in REAL_VALUES:
@@ -74,7 +74,7 @@ def test_follow_up_resumes_conversation_and_keeps_placeholders(fake_cli, capsys)
 
 def test_copilot_target_and_model(fake_cli, capsys, monkeypatch):
     monkeypatch.setenv("FAKE_CLI_ANSWER", "user <USER_1>")
-    code, out, _ = run(["--file", str(CORPUS / "syslog_auth.log"), "q", "--to", "copilot:gpt-5", "--session", "t3"], capsys)
+    code, out, _ = run(["--file", str(CORPUS / "syslog_auth.log"), "q", "--to", "copilot:gpt-5", "--session", "t3", "--restore"], capsys)
     [call] = fake_cli()
     assert code == 0 and out.strip() == "user mlopez"
     a = call["argv"]
@@ -84,7 +84,7 @@ def test_copilot_target_and_model(fake_cli, capsys, monkeypatch):
 
 
 def test_no_real_values_written_to_disk(fake_cli, capsys, isolated_home):
-    run(["--file", str(CORPUS / "syslog_auth.log"), "q", "--session", "t4", "--out", str(isolated_home / "answer.txt")], capsys)
+    run(["--file", str(CORPUS / "syslog_auth.log"), "q", "--session", "t4", "--restore", "--out", str(isolated_home / "answer.txt")], capsys)
     for p in isolated_home.rglob("*"):
         if p.is_file() and p.name != "answer.txt":           # --out is the user's restored answer
             data = p.read_bytes()
