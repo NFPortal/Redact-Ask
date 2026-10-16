@@ -104,3 +104,17 @@ def test_audit_entries_and_retention(isolated_home):
     old = dict(lines[0], time=(now() - timedelta(days=30)).isoformat())
     a.path.write_text(json.dumps(old) + "\n" + json.dumps(lines[1]) + "\n", encoding="utf-8")
     assert a.expire() == 1
+
+
+def test_final_scan_catches_values_hidden_in_hex_and_base64(cfg):
+    """Windows events carry the server name as UTF-16 hex in <Binary>; it must not slip through."""
+    import base64 as b64
+    from redactask.models import Mapping as M
+    m = M()
+    masker.placeholder_for(m, "HOST", "SRV-FAKE0042")
+    blob = ("AC450000140000001600000" + "0" + "SRV-FAKE0042\\BARTENDER".encode("utf-16-le").hex().upper() + "0000")
+    text = f"Computer: <HOST_1>\n<Binary>{blob}</Binary>\nother: {b64.b64encode(b'user=srv-fake0042 ok').decode()}"
+    left = final_scan.scan(text, m, cfg, ListData())
+    assert [f.type for f in left] == ["ENCODED", "ENCODED"]
+    # harmless blobs are left alone
+    assert final_scan.scan("<Binary>" + ("00" * 40) + "</Binary>", M(), cfg, ListData()) == []

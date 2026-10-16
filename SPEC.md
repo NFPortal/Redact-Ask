@@ -404,6 +404,9 @@ do. A script may only depend on `models.py`, `config.py`, and the scripts named 
 - **Responsibilities:**
   - Run [4], [5], and [6] on the redacted text, ignoring placeholders.
   - Search the redacted text for **every real value in the mapping**; any match is a leak.
+  - Decode hex and base64 blobs (UTF-16LE, UTF-8, Latin-1) and check the decoded text the same way;
+    a blob that hides a real value or a detectable secret is reported as `ENCODED` and replaced whole.
+    (Found in real use: a Windows event's `<Binary>` field held the server name as UTF-16 hex.)
   - Return all leftovers; `redact_ask.py` sends them back through [9] and [10] (max 2 retries).
   - On final failure the orchestrator prints line, column, and type of each leftover to stderr
     and exits 4.
@@ -513,6 +516,7 @@ Type names are the placeholder prefixes. **Default** = on unless changed in `[ty
 | `GIT_CRED` | Credentials inside Git URLs |
 | `NET_SECRET` | SNMP community strings, RADIUS shared secrets, BGP/OSPF passwords |
 | `HIGH_ENTROPY` | Random-looking strings next to key/token/secret words |
+| `ENCODED` | Hex/base64 blobs whose decoded content contains a sensitive value |
 | `USER` | Usernames (system, `DOMAIN\user`, UPN, names in home paths) |
 | `EMAIL` | Email addresses, including Git author emails |
 | `PERSON` | People's names |
@@ -629,6 +633,7 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 | GLiNER target: ≥95% of planted values, tuned after a baseline | Realistic for a model; misses become list entries via the approval prompt | 2026-10-16 |
 | Audit log entries expire with the session rule (14 days) | One retention rule | 2026-10-16 |
 | Subnet guess /24 for private IPs, overridden by `lists/subnets.txt` | Fits typical home/lab networks; real ranges win | 2026-10-16 |
+| Final scan decodes hex/base64 blobs and redacts any that hide sensitive values (`ENCODED`) | A Windows event's binary data leaked a server name | 2026-10-16 |
 | Web search/fetch risk accepted | Only placeholders can leave via search queries | 2026-10-16 |
 | Cloud CLI runs in a per-session empty folder instead of a fresh temp folder | Claude Code resumes conversations per working folder | 2026-10-16 |
 | Learner doesn't prompt when stderr isn't a terminal | Scripted runs would otherwise hang waiting for an answer | 2026-10-16 |

@@ -150,6 +150,9 @@ def cmd_ask(argv: list[str]) -> int:
     session = store.load(SessionStore.session_name(a.session))
     if a.new_session:
         session = store.reset(session)
+    if inp.source == "none" and not session.conversations.get(tool):
+        _err("no text to analyze was received (no text argument, --file or piped input), and there's no "
+             "earlier conversation in this session; sending only the question.")
 
     # [6] lists, then [4]-[10] + [13]
     lists = lists_detector.load(d.lists)

@@ -221,6 +221,8 @@ _CATALOG_SPEC = {
     "PROCESS": _t("other", OFF),
     "GEO": _t("other", OFF),
     "VERSION": _t("other", OFF),
+    # --- hex/base64 blobs whose decoded content contains sensitive values ---
+    "ENCODED": _t("secrets", ALWAYS),
     # --- internal: text in the input that already looks like a placeholder ---
     "LITERAL": _t("other", ALWAYS),
 }
@@ -235,7 +237,7 @@ TYPE_PRIORITY: list[str] = [
     # secrets
     "PRIVATE_KEY", "CONN_STRING", "SIGNED_URL", "GIT_CRED", "CLOUD_SECRET", "REGISTRY_AUTH",
     "VPN_KEY", "NET_SECRET", "OTP_SEED", "PASSWORD", "HASH", "TOKEN", "API_KEY", "SESSION",
-    "SECRET", "HIGH_ENTROPY",
+    "SECRET", "ENCODED", "HIGH_ENTROPY",
     # identity
     "GOV_ID", "CARD", "BANK", "EMAIL", "SID", "USER", "PERSON", "PHONE", "ADDRESS",
     # network
