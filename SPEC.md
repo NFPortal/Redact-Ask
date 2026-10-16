@@ -505,7 +505,8 @@ do. A script may only depend on `models.py`, `config.py`, and the scripts named 
 
 ## Redaction Catalog
 
-Type names are the placeholder prefixes. **Default** = on unless changed in `[types]` in config.
+Type names are the placeholder prefixes. Every type below is listed in `[types]` in the config with its
+default, and any of them can be switched on or off (switching off an "always" type prints a warning on every run).
 
 ### Always redacted
 | Type | Covers |
@@ -649,6 +650,7 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 | The question must be given with `-q`/`--query`; a bare argument is only ever the text to analyze | A mistyped command (`rt-passphrase`) was treated as a question; no guessing which words are commands | 2026-10-16 |
 | `--preview` (confirm before sending, answer read from the console; cancel logged as `cancelled`) and `--dry-run` (show and stop, nothing logged); `preview = true` in config makes preview the default | User wants to see the redacted text before it leaves the machine | 2026-10-16 |
 | Preview on by default (`preview = true`) | User decision | 2026-10-16 |
+| Every redaction type is listed in `[types]` with its default and can be turned on or off, including the former "always" types (turning one of those off prints a warning on every run); only the internal `LITERAL` escaping can't be turned off | User wants to allow everything or redact everything from the config | 2026-10-16 |
 | `sessions show` (print the mapping) not added | User decision: no tool that prints real values | 2026-10-16 |
 | Web search/fetch risk accepted | Only placeholders can leave via search queries | 2026-10-16 |
 | Cloud CLI runs in a per-session empty folder instead of a fresh temp folder | Claude Code resumes conversations per working folder | 2026-10-16 |

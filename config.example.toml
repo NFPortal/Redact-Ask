@@ -17,13 +17,87 @@ copilot_max_arg_chars = 30000      # only used if copilot can't read the prompt 
 internal_suffixes = [".local", ".lan", ".internal", ".corp", ".home.arpa", ".intranet", ".private"]
 
 [types]
-# Per-type overrides for the configurable types in the SPEC Redaction Catalog.
-# "Always" types cannot be turned off.
-BUCKET = false
-# IP_PRIVATE = true
-# IP_LOCAL = false
-# PORT = false
-# UUID = false
+# Every redaction type, set to its default. true = redact, false = send as-is.
+# Set them all to true to redact everything, or to false to allow everything.
+# Turning off a type marked (*) prints a warning on every run.
+
+# Secrets
+API_KEY       = true    # cloud and SaaS API keys (*)
+TOKEN         = true    # bearer/OAuth tokens, JWTs, Authorization headers (*)
+PASSWORD      = true    # passwords in configs, URLs, CLI arguments (*)
+HASH          = true    # password hashes (bcrypt, NTLM, shadow) (*)
+PRIVATE_KEY   = true    # PEM/SSH/PGP/PuTTY private keys (*)
+CONN_STRING   = true    # connection strings with credentials (*)
+CLOUD_SECRET  = true    # AWS secret keys, Azure storage keys, GCP service-account keys (*)
+SIGNED_URL    = true    # pre-signed URLs, webhook URLs with secrets (*)
+SESSION       = true    # session cookies and IDs, CSRF tokens (*)
+SECRET        = true    # app secrets, signing/encryption keys (*)
+VPN_KEY       = true    # WireGuard/VPN keys, Wi-Fi passwords (*)
+OTP_SEED      = true    # TOTP/2FA seeds, recovery codes (*)
+REGISTRY_AUTH = true    # npm/PyPI/NuGet/Docker/kubeconfig credentials (*)
+GIT_CRED      = true    # credentials inside Git URLs (*)
+NET_SECRET    = true    # SNMP communities, RADIUS/BGP/OSPF secrets (*)
+HIGH_ENTROPY  = true    # random-looking strings near key/token words (*)
+ENCODED       = true    # hex/base64 blobs that hide a sensitive value (*)
+
+# Identity
+USER          = true    # usernames (*)
+EMAIL         = true    # email addresses (*)
+PERSON        = true    # people's names (*)
+SID           = true    # Windows SIDs (*)
+PHONE         = true    # phone numbers (*)
+ADDRESS       = true    # street addresses, cities (*)
+GOV_ID        = true    # SSNs / national ID numbers (*)
+CARD          = true    # credit card numbers (*)
+BANK          = true    # IBANs, bank and routing numbers (*)
+
+# Network
+IP            = true    # public IP addresses (*)
+MAC           = true    # MAC addresses, BSSIDs (*)
+HOST          = true    # internal hostnames and server names (*)
+DOMAIN        = true    # internal/AD domains and domains you list (*)
+IP_PRIVATE    = true    # private IPs (10.x, 172.16-31.x, 192.168.x, CGNAT)
+SUBNET        = true    # CIDR ranges
+URL           = true    # URLs on internal hosts
+SSID          = true    # Wi-Fi network names
+VPN_ID        = true    # tailnet names, ZeroTier/Cloudflare tunnel IDs
+CERT          = true    # certificate subjects, SANs, fingerprints
+IP_LOCAL      = false   # loopback, link-local, multicast IPs
+PORT          = false   # port numbers
+VLAN          = false   # VLAN IDs
+
+# Infrastructure
+CLOUD_ID      = true    # AWS account IDs, Azure tenant/subscription IDs, ARNs (*)
+CLUSTER       = true    # Kubernetes/Proxmox cluster and namespace names
+IMAGE         = true    # private container registry images
+SERIAL        = true    # hardware serials, asset tags, system UUIDs
+LICENSE       = true    # license and product keys
+MACHINE_ID    = true    # machine-id, MachineGuid, device IDs
+BUCKET        = false   # storage bucket/container names
+
+# Programming and data
+DB            = true    # database names
+TABLE         = true    # table names
+COLUMN        = true    # column names
+PROC          = true    # stored procedures, views, triggers
+SQL_VALUE     = true    # string values in SQL
+ENV_VALUE     = true    # every .env-style KEY=value value
+REPO          = true    # Git repository names
+ORG           = true    # Git organisation names
+PACKAGE       = true    # internal package names
+ORG_NAME      = true    # company, client, product names
+CUSTOMER_ID   = true    # customer, order, ticket numbers
+PATH          = true    # sensitive path segments (UNC shares)
+PROJECT       = true    # project names
+BRANCH        = false   # Git branch names
+
+# Other
+UUID          = false   # generic UUIDs/GUIDs
+UID           = false   # Unix UIDs/GIDs
+TIME          = false   # timestamps
+PROCESS       = false   # PIDs
+GEO           = false   # coordinates, time zones
+VERSION       = false   # software versions
 
 [paths]
 mode = "segments"                  # only sensitive path segments are redacted

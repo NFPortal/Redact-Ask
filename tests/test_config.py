@@ -20,11 +20,31 @@ def test_type_defaults(cfg):
     assert not cfg.type_enabled("PORT")         # off by default
 
 
-def test_always_types_cannot_be_disabled():
-    c = config.from_dict({"types": {"PASSWORD": False, "PORT": True}})
-    assert c.type_enabled("PASSWORD")
+def test_every_type_can_be_turned_off_with_warning_for_always_types():
+    c = config.from_dict({"types": {"PASSWORD": False, "PORT": True, "USER": False}})
+    assert not c.type_enabled("PASSWORD") and not c.type_enabled("USER")
     assert c.type_enabled("PORT")
-    assert any("always redacted" in w for w in c.warnings)
+    assert sum("turned off" in w for w in c.warnings) == 2
+    assert c.type_enabled("LITERAL")                 # internal escaping can't be turned off
+
+
+def test_allow_everything_and_redact_everything():
+    from redactask.models import CATALOG
+    names = [n for n in CATALOG if n != "LITERAL"]
+    off = config.from_dict({"types": {n: False for n in names}})
+    on = config.from_dict({"types": {n: True for n in names}})
+    assert not any(off.type_enabled(n) for n in names)
+    assert all(on.type_enabled(n) for n in names)
+
+
+def test_example_config_lists_every_type_with_current_defaults():
+    import tomllib
+    from redactask.models import CATALOG
+    raw = tomllib.loads(config.EXAMPLE_CONFIG.read_text(encoding="utf-8"))["types"]
+    assert set(raw) == {n for n in CATALOG if n != "LITERAL"}
+    defaults = config.Config()
+    for name, value in raw.items():
+        assert value == defaults.type_enabled(name), name
 
 
 def test_invalid_values_rejected():

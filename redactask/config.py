@@ -85,13 +85,11 @@ class Config:
 
     def type_enabled(self, type_name: str) -> bool:
         info = CATALOG.get(type_name)
-        if info is None:
-            return True  # unknown types are redacted (over-redact)
-        if info.default == ALWAYS:
-            return True
+        if info is None or type_name == "LITERAL":
+            return True  # unknown types are redacted (over-redact); LITERAL is internal escaping
         if type_name in self.type_overrides:
             return self.type_overrides[type_name]
-        return info.default == ON
+        return info.default in (ALWAYS, ON)
 
 
 def parse_target(target: str) -> tuple[str, str | None]:
@@ -158,14 +156,15 @@ def from_dict(raw: dict) -> Config:
     for name, value in overrides.items():
         name = name.upper()
         info = CATALOG.get(name)
-        if info is None:
+        if info is None or name == "LITERAL":
             c.warnings.append(f"config: unknown type '{name}' in [types] ignored.")
-        elif info.default == ALWAYS:
-            c.warnings.append(f"config: {name} is always redacted; the [types] setting is ignored.")
         elif not isinstance(value, bool):
             raise UsageError(f"config: [types] {name} must be true or false.")
         else:
             c.type_overrides[name] = value
+            if info.default == ALWAYS and value is False:
+                # Allowed (the user decides), but say so on every run.
+                c.warnings.append(f"config: {name} redaction is turned off; these values will be sent as-is.")
 
     paths = raw.get("paths", {})
     c.path_mode = paths.get("mode", "segments")
