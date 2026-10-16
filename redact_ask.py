@@ -92,6 +92,9 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--restore", action="store_true",
                    help="show the answer with placeholders replaced by the real values (default: as the model wrote it)")
     p.add_argument("--out", metavar="FILE", help="also write the answer to FILE")
+    p.add_argument("--preview", action="store_true",
+                   help="show the redacted text and ask before sending (or set preview = true in config)")
+    p.add_argument("--dry-run", action="store_true", help="show the redacted text and stop; nothing is sent")
     return p
 
 
@@ -116,7 +119,7 @@ def cmd_reset_passphrase(argv: list[str]) -> int:
     d = config.dirs()
     _err("this deletes ALL saved sessions (placeholder mappings and conversation links) and sets a new\n"
          "passphrase. Your config, lists and audit log are kept.")
-    if key_manager._confirm("Type RESET to continue: ") != "RESET":
+    if output_writer.confirm("Type RESET to continue: ") != "RESET":
         print("Cancelled; nothing was changed.")
         return EXIT_OK
     n = SessionStore.wipe(d.sessions, d.workdirs)
@@ -196,8 +199,19 @@ def cmd_ask(argv: list[str]) -> int:
          f"{f'; {result.retries} re-scan pass(es)' if result.retries else ''}; sending to "
          f"{tool}{':' + model if model else ''} ({cfg.context} context)...")
 
-    # [14] [15] send
+    # [14] [15] send (after an optional preview)
     prompt = cloud_runner.build_prompt(result.redacted_text, tool)
+    if a.dry_run:
+        output_writer.write(prompt)
+        _err("dry run: nothing was sent.")
+        return EXIT_OK
+    if a.preview or cfg.preview:
+        output_writer.show_preview(prompt)
+        if output_writer.confirm(f"Send this to {tool}? [y/N] ").lower() not in ("y", "yes"):
+            run_id = audit.start(prompt, tool, model, session.id, counts, result.retries, inp.source,
+                                 status="cancelled")
+            _err("cancelled; nothing was sent.")
+            return EXIT_OK
     run_id = audit.start(prompt, tool, model, session.id, counts, result.retries, inp.source)
     try:
         cloud = cloud_runner.run(prompt, tool, model, session.conversations.get(tool), store.workdir(session.id),

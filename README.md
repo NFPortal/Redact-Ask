@@ -30,6 +30,8 @@ redact-ask --file app.log -q "Why are logins failing?"
 Get-Clipboard -Raw | redact-ask -q "Why are logins failing?"
 redact-ask -q "Which host was that on?"          # follow-up, same conversation
 redact-ask --file app.log -q "..." --to copilot:gpt-5 --out answer.md
+redact-ask --file app.log -q "..." --preview      # show the redacted text, ask before sending (on by default)
+redact-ask --file app.log -q "..." --dry-run      # show the redacted text only, send nothing
 redact-ask sessions list
 redact-ask sessions clear <name> | --all
 redact-ask reset-passphrase

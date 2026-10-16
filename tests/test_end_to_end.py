@@ -29,6 +29,7 @@ def fake_cli(tmp_path, monkeypatch):
     monkeypatch.setattr(cloud_runner, "_exe", lambda tool: str(wrapper))
     monkeypatch.setattr(gliner_detector, "detect", lambda text, cfg: [])   # keep e2e fast
     monkeypatch.setattr(learner, "_open_tty", lambda: (None, None))
+    monkeypatch.setattr(output_writer, "confirm", lambda m: "y")      # preview is on by default
 
     class TtyStdin(io.StringIO):
         def isatty(self):
@@ -179,3 +180,48 @@ def test_text_without_query_is_never_sent(fake_cli, capsys):
         code, _, err = run(argv, capsys)
         assert code == 2 and "-q" in err
     assert fake_cli() == []
+
+
+def test_dry_run_shows_redacted_text_and_sends_nothing(fake_cli, capsys):
+    code, out, err = run(["--file", str(CORPUS / "syslog_auth.log"), "-q", "q", "--dry-run", "--session", "d1"], capsys)
+    assert code == 0 and "<USER_1>" in out and "mlopez" not in out and "nothing was sent" in err
+    assert fake_cli() == []
+
+
+def test_preview_declined_sends_nothing_and_is_logged(fake_cli, capsys, monkeypatch, isolated_home):
+    monkeypatch.setattr(output_writer, "confirm", lambda m: "n")
+    code, out, err = run(["--file", str(CORPUS / "syslog_auth.log"), "-q", "q", "--preview", "--session", "p1"], capsys)
+    assert code == 0 and "text to be sent" in err and "<USER_1>" in err and "cancelled" in err
+    assert fake_cli() == []
+    lines = (config.dirs().audit / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+    assert [json.loads(l)["status"] for l in lines] == ["cancelled"]
+
+
+def test_preview_accepted_sends(fake_cli, capsys, monkeypatch):
+    monkeypatch.setattr(output_writer, "confirm", lambda m: "y")
+    code, out, _ = run(["--file", str(CORPUS / "syslog_auth.log"), "-q", "q", "--preview", "--session", "p2"], capsys)
+    assert code == 0 and len(fake_cli()) == 1
+
+
+def test_preview_is_on_by_default_and_can_be_turned_off(fake_cli, capsys, monkeypatch, isolated_home):
+    asked = []
+    monkeypatch.setattr(output_writer, "confirm", lambda m: asked.append(m) or "n")
+    run(["--file", str(CORPUS / "syslog_auth.log"), "-q", "q", "--session", "p3"], capsys)
+    assert asked and fake_cli() == []                     # default: asked, declined, nothing sent
+    cfg_path = config.dirs().config / "config.toml"
+    cfg_path.write_text(cfg_path.read_text(encoding="utf-8").replace("preview = true", "preview = false"),
+                        encoding="utf-8")
+    asked.clear()
+    run(["--file", str(CORPUS / "syslog_auth.log"), "-q", "q", "--session", "p4"], capsys)
+    assert not asked and len(fake_cli()) == 1             # preview = false: sent without asking
+
+
+def test_preview_flag_still_asks_when_config_is_false(fake_cli, capsys, monkeypatch, isolated_home):
+    config.load()
+    cfg_path = config.dirs().config / "config.toml"
+    cfg_path.write_text(cfg_path.read_text(encoding="utf-8").replace("preview = true", "preview = false"),
+                        encoding="utf-8")
+    asked = []
+    monkeypatch.setattr(output_writer, "confirm", lambda m: asked.append(m) or "n")
+    code, _, err = run(["--file", str(CORPUS / "syslog_auth.log"), "-q", "q", "--preview", "--session", "p5"], capsys)
+    assert code == 0 and asked and "text to be sent" in err and fake_cli() == []

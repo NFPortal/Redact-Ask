@@ -32,7 +32,7 @@ values in the answer locally. Real values never leave the machine.
 
 ### Out of scope
 - Presidio (GLiNER is called directly; our own scripts merge and replace).
-- Preview/confirm before sending (sends automatically when the final scan passes).
+- (Preview was out of scope at first; now available with `--preview` / `--dry-run`.)
 - Pip/pipx packaging (run from the project folder).
 - Folder / multi-file input.
 - Pulling lists from AD/LDAP or database schemas.
@@ -62,6 +62,9 @@ Options:
   --file PATH           Read the text to analyze from a file
   --restore             Show the answer with placeholders replaced by the real values
   --out FILE            Also write the answer (raw, or restored with --restore) to FILE
+  --preview             Show the exact redacted text and ask "Send? [y/N]" before sending
+                        (on by default: config `preview = true`; set it to false to send without asking)
+  --dry-run             Show the exact redacted text and stop; nothing is sent
 
 python redact_ask.py sessions list
 python redact_ask.py sessions clear [NAME | --all]
@@ -617,7 +620,7 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 | Mappings encrypted (Fernet) with the key in the OS keyring; 600-mode key file fallback on headless Debian — superseded by the passphrase row below | Works on Windows and Debian; no passphrase to type | 2026-10-16 |
 | Lists, mappings, config stored in user folders, never the project folder | They contain real sensitive values; avoid git commits and cloud tools reading them | 2026-10-16 |
 | Sessions expire after 14 unused days (configurable) | Limit how long real values sit on disk | 2026-10-16 |
-| No preview; send automatically when the final scan passes | User preference | 2026-10-16 |
+| No preview by default; send automatically when the final scan passes — superseded: preview is now on by default | User preference | 2026-10-16 |
 | Final scan failure: re-redact and rescan, max 2 retries, then abort | Fixes simple misses automatically while staying fail-closed | 2026-10-16 |
 | Follow-ups continue the same cloud conversation | Cloud model keeps context | 2026-10-16 |
 | Default target in config; `--to target[:model]` overrides per prompt | User preference | 2026-10-16 |
@@ -644,6 +647,8 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 | Session key derived from a passphrase typed each run; no stored key (Credential Manager / key file removed, old sessions migrated) | An AI agent running as the user decrypted the mapping while debugging; a stored key can't stop that | 2026-10-16 |
 | `reset-passphrase` command deletes all sessions and sets a new passphrase, confirmed by typing RESET | Forgetting the passphrase shouldn't require manual file deletion | 2026-10-16 |
 | The question must be given with `-q`/`--query`; a bare argument is only ever the text to analyze | A mistyped command (`rt-passphrase`) was treated as a question; no guessing which words are commands | 2026-10-16 |
+| `--preview` (confirm before sending, answer read from the console; cancel logged as `cancelled`) and `--dry-run` (show and stop, nothing logged); `preview = true` in config makes preview the default | User wants to see the redacted text before it leaves the machine | 2026-10-16 |
+| Preview on by default (`preview = true`) | User decision | 2026-10-16 |
 | `sessions show` (print the mapping) not added | User decision: no tool that prints real values | 2026-10-16 |
 | Web search/fetch risk accepted | Only placeholders can leave via search queries | 2026-10-16 |
 | Cloud CLI runs in a per-session empty folder instead of a fresh temp folder | Claude Code resumes conversations per working folder | 2026-10-16 |

@@ -8,7 +8,7 @@ def test_defaults_match_spec(cfg):
     assert cfg.default_target == "claude"
     assert cfg.max_lines == 5000 and cfg.max_bytes == 1_000_000
     assert cfg.session_expiry_days == 14 and cfg.max_scan_retries == 2
-    assert cfg.context == "isolated"
+    assert cfg.context == "isolated" and cfg.preview is True
     assert cfg.gliner.model == "nvidia/gliner-pii" and cfg.gliner.threshold == 0.3
     assert cfg.private_subnet_prefix == 24
 

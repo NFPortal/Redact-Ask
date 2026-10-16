@@ -26,10 +26,10 @@ class AuditLog:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     def start(self, redacted_text: str, target: str, model: str | None, session_id: str,
-              counts: dict[str, int], retries: int, source: str) -> str:
+              counts: dict[str, int], retries: int, source: str, status: str = "sending") -> str:
         run_id = uuid.uuid4().hex
         self._append({
-            "run_id": run_id, "time": now().isoformat(), "status": "sending", "target": target,
+            "run_id": run_id, "time": now().isoformat(), "status": status, "target": target,
             "model": model, "session": session_id[:16], "source": source, "counts": counts,
             "scan_retries": retries, "sent_text": redacted_text,
         })

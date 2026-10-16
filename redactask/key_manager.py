@@ -55,23 +55,6 @@ def _prompt(message: str) -> str:
     return getpass.unix_getpass(message, stream=sys.stderr)
 
 
-def _confirm(message: str) -> str:
-    """Read a visible answer from the console (not stdin), e.g. for 'type RESET to continue'."""
-    try:
-        if sys.platform == "win32":
-            with open("CONIN$", "r", encoding="utf-8", errors="replace") as r, \
-                    open("CONOUT$", "w", encoding="utf-8") as w:
-                w.write(message)
-                w.flush()
-                return r.readline().strip()
-        with open("/dev/tty", "r+", encoding="utf-8", errors="replace") as tty:
-            tty.write(message)
-            tty.flush()
-            return tty.readline().strip()
-    except OSError as e:
-        raise StorageError("No terminal available to confirm the reset.") from e
-
-
 def reset(config_dir: Path) -> bytes:
     """Forget the passphrase (delete salt and check value) and create a new one.
     The caller deletes the sessions, which can't be read without the old passphrase."""

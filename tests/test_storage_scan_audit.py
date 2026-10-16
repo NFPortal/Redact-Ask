@@ -5,7 +5,7 @@ from datetime import timedelta
 
 import pytest
 
-from redactask import audit_log, config, final_scan, key_manager, masker
+from redactask import audit_log, config, final_scan, key_manager, masker, output_writer
 from redactask.lists_detector import ListData
 from redactask.models import Mapping, StorageError, now
 from redactask.session_store import SessionStore
@@ -151,10 +151,10 @@ def test_reset_passphrase_command(isolated_home, monkeypatch, capsys):
     s = store()
     s.save(s.load("old-session"))
     old_check = (config.dirs().config / "key.check").read_bytes()
-    monkeypatch.setattr(key_manager, "_confirm", lambda m: "nope")
+    monkeypatch.setattr(output_writer, "confirm", lambda m: "nope")
     assert redact_ask.main(["reset-passphrase"]) == 0
     assert list(config.dirs().sessions.glob("*.session"))            # cancelled: nothing changed
-    monkeypatch.setattr(key_manager, "_confirm", lambda m: "RESET")
+    monkeypatch.setattr(output_writer, "confirm", lambda m: "RESET")
     monkeypatch.setattr(key_manager, "_prompt", lambda m: "brand-new-passphrase")
     assert redact_ask.main(["reset-passphrase"]) == 0
     assert "Deleted 1 session(s)" in capsys.readouterr().out
