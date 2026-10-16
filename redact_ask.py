@@ -6,6 +6,7 @@ Only parses arguments and calls the other scripts in the order of the SPEC data 
                          [--session NAME] [--new-session] [--deep] [--restore] [--out FILE]
     python redact_ask.py sessions list
     python redact_ask.py sessions clear [NAME | --all]
+    python redact_ask.py reset-passphrase
 """
 from __future__ import annotations
 
@@ -77,7 +78,9 @@ def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="redact_ask.py",
         description="Redact logs/code locally, ask Claude Code or Copilot CLI, and restore the real values.",
-        epilog="Sessions: python redact_ask.py sessions list | sessions clear [NAME | --all]")
+        epilog="Sessions: python redact_ask.py sessions list | sessions clear [NAME | --all]\n"
+               "Forgot the passphrase: python redact_ask.py reset-passphrase",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("args", nargs="+", metavar="[TEXT] QUESTION",
                    help="optional text to analyze (pasted in quotes), then the question")
     p.add_argument("--file", metavar="PATH", help="read the text to analyze from a file instead")
@@ -103,6 +106,22 @@ def _open_store(cfg) -> SessionStore:
         key_manager.delete_legacy(d.config)
         _err(f"moved {moved} session(s) to passphrase encryption and deleted the old stored key.")
     return store
+
+
+def cmd_reset_passphrase(argv: list[str]) -> int:
+    """Forgotten passphrase: delete all sessions (unreadable without it) and create a new one."""
+    if argv:
+        raise UsageError("reset-passphrase takes no arguments.")
+    d = config.dirs()
+    _err("this deletes ALL saved sessions (placeholder mappings and conversation links) and sets a new\n"
+         "passphrase. Your config, lists and audit log are kept.")
+    if key_manager._confirm("Type RESET to continue: ") != "RESET":
+        print("Cancelled; nothing was changed.")
+        return EXIT_OK
+    n = SessionStore.wipe(d.sessions, d.workdirs)
+    key_manager.reset(d.config)
+    print(f"Deleted {n} session(s) and set a new passphrase.")
+    return EXIT_OK
 
 
 def cmd_sessions(argv: list[str]) -> int:
@@ -214,6 +233,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if argv and argv[0] == "sessions":
             return cmd_sessions(argv[1:])
+        if argv and argv[0] == "reset-passphrase":
+            return cmd_reset_passphrase(argv[1:])
         return cmd_ask(argv)
     except RedactAskError as e:
         _err(e.message)

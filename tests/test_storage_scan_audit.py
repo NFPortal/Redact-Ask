@@ -144,3 +144,22 @@ def test_final_scan_catches_values_hidden_in_hex_and_base64(cfg):
     assert [f.type for f in left] == ["ENCODED", "ENCODED"]
     # harmless blobs are left alone
     assert final_scan.scan("<Binary>" + ("00" * 40) + "</Binary>", M(), cfg, ListData()) == []
+
+
+def test_reset_passphrase_command(isolated_home, monkeypatch, capsys):
+    import redact_ask
+    s = store()
+    s.save(s.load("old-session"))
+    old_check = (config.dirs().config / "key.check").read_bytes()
+    monkeypatch.setattr(key_manager, "_confirm", lambda m: "nope")
+    assert redact_ask.main(["reset-passphrase"]) == 0
+    assert list(config.dirs().sessions.glob("*.session"))            # cancelled: nothing changed
+    monkeypatch.setattr(key_manager, "_confirm", lambda m: "RESET")
+    monkeypatch.setattr(key_manager, "_prompt", lambda m: "brand-new-passphrase")
+    assert redact_ask.main(["reset-passphrase"]) == 0
+    assert "Deleted 1 session(s)" in capsys.readouterr().out
+    assert not config.dirs().sessions.exists()
+    assert (config.dirs().config / "key.check").read_bytes() != old_check
+    key_manager._cache.clear()
+    key, created = key_manager.get_key(config.dirs().config)   # new passphrase unlocks
+    assert not created

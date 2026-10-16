@@ -63,6 +63,7 @@ Options:
 
 python redact_ask.py sessions list
 python redact_ask.py sessions clear [NAME | --all]
+python redact_ask.py reset-passphrase    # forgot it: delete all sessions, set a new one
 ```
 Exactly one input source (text argument, `--file`, or stdin) is allowed per run. The clipboard is never read. **The question text is
 also redacted**: it is appended to the input as a separate section and goes through the whole
@@ -639,6 +640,7 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 | Subnet guess /24 for private IPs, overridden by `lists/subnets.txt` | Fits typical home/lab networks; real ranges win | 2026-10-16 |
 | Final scan decodes hex/base64 blobs and redacts any that hide sensitive values (`ENCODED`) | A Windows event's binary data leaked a server name | 2026-10-16 |
 | Session key derived from a passphrase typed each run; no stored key (Credential Manager / key file removed, old sessions migrated) | An AI agent running as the user decrypted the mapping while debugging; a stored key can't stop that | 2026-10-16 |
+| `reset-passphrase` command deletes all sessions and sets a new passphrase, confirmed by typing RESET | Forgetting the passphrase shouldn't require manual file deletion | 2026-10-16 |
 | `sessions show` (print the mapping) not added | User decision: no tool that prints real values | 2026-10-16 |
 | Web search/fetch risk accepted | Only placeholders can leave via search queries | 2026-10-16 |
 | Cloud CLI runs in a per-session empty folder instead of a fresh temp folder | Claude Code resumes conversations per working folder | 2026-10-16 |
@@ -656,8 +658,9 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 - **Ollama not running with `--deep`** → exit 7 (never silently skip a requested pass).
 - **Wrong passphrase 3 times, or no terminal to ask for it** (e.g. run from a scheduled task) → exit 6;
   nothing is sent.
-- **Forgotten passphrase** → sessions can't be recovered; delete the sessions folder, `key.salt` and
-  `key.check` to start over.
+- **Forgotten passphrase** → sessions can't be recovered; `reset-passphrase` (after typing RESET at
+  the console) deletes all sessions and working folders, removes `key.salt`/`key.check`, and asks for
+  a new passphrase. Config, lists and the audit log are kept.
 - **Session file can't be decrypted** (key changed) → exit 6; suggest `sessions clear NAME`.
 - **Placeholder-like text already in the input** (`<USER_1>` in the original) → escape it before
   masking so it can't be confused with a real placeholder, and restore it in the output.

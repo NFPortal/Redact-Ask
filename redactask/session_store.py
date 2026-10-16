@@ -23,6 +23,15 @@ class SessionStore:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.workdirs.mkdir(parents=True, exist_ok=True)
 
+    @staticmethod
+    def wipe(sessions_dir: Path, workdirs_dir: Path) -> int:
+        """Delete every session file and working folder without needing the key
+        (used when the passphrase is reset). Returns how many sessions were deleted."""
+        n = len(list(sessions_dir.glob("*.session"))) if sessions_dir.exists() else 0
+        shutil.rmtree(sessions_dir, ignore_errors=True)
+        shutil.rmtree(workdirs_dir, ignore_errors=True)
+        return n
+
     # -- naming -------------------------------------------------------------
     @staticmethod
     def session_name(name: str | None, cwd: str | None = None) -> str:

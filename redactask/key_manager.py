@@ -55,6 +55,34 @@ def _prompt(message: str) -> str:
     return getpass.unix_getpass(message, stream=sys.stderr)
 
 
+def _confirm(message: str) -> str:
+    """Read a visible answer from the console (not stdin), e.g. for 'type RESET to continue'."""
+    try:
+        if sys.platform == "win32":
+            with open("CONIN$", "r", encoding="utf-8", errors="replace") as r, \
+                    open("CONOUT$", "w", encoding="utf-8") as w:
+                w.write(message)
+                w.flush()
+                return r.readline().strip()
+        with open("/dev/tty", "r+", encoding="utf-8", errors="replace") as tty:
+            tty.write(message)
+            tty.flush()
+            return tty.readline().strip()
+    except OSError as e:
+        raise StorageError("No terminal available to confirm the reset.") from e
+
+
+def reset(config_dir: Path) -> bytes:
+    """Forget the passphrase (delete salt and check value) and create a new one.
+    The caller deletes the sessions, which can't be read without the old passphrase."""
+    (config_dir / SALT_FILE).unlink(missing_ok=True)
+    (config_dir / CHECK_FILE).unlink(missing_ok=True)
+    _cache.pop(str(config_dir), None)
+    key = _create(config_dir)
+    _cache[str(config_dir)] = key
+    return key
+
+
 def _derive(passphrase: str, salt: bytes) -> bytes:
     kdf = Scrypt(salt=salt, length=32, n=2 ** 15, r=8, p=1)
     return base64.urlsafe_b64encode(kdf.derive(passphrase.encode("utf-8")))
