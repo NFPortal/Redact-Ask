@@ -1,0 +1,11 @@
+# Hand-written replacements for gitleaks rules whose regex does not compile in Python.
+# Same format as gitleaks.toml; a rule here replaces the gitleaks rule with the same id.
+#
+# As of gitleaks v8.30.1 every rule compiles with the `regex` module (VERSION1), so no
+# overrides are needed. tests/test_secrets_detector.py fails if that ever changes.
+#
+# Example:
+# [[rules]]
+# id = "some-rule-id"
+# regex = '''...python-compatible pattern...'''
+# keywords = ["..."]

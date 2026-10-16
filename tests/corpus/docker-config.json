@@ -1,0 +1,5 @@
+{
+  "auths": {
+    "registry.contoso.local:5000": { "auth": "ZGVwbG95Ym90OmVhSU9xdUNiT3NLb0hFemh3ZFhh" }
+  }
+}

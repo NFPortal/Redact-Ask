@@ -1,0 +1,209 @@
+{
+  "_comment": "Planted values per corpus file. 'rule' values must ALL be redacted by rules/secrets/lists (100%). 'model' values are only catchable by GLiNER; target >= 95% across the corpus. All secrets here are fake.",
+  "syslog_auth.log": {
+    "rule": [
+      "mlopez",
+      "10.20.4.17",
+      "web-prod-03",
+      "203.0.113.250",
+      "198.51.100.77",
+      "oracle",
+      "db-replica-02",
+      "185.220.101.45",
+      "10.20.8.31",
+      "52:54:00:9a:3c:11:52:54:00:7e:21:aa:08:00",
+      "nas01.corp.local",
+      "nas01",
+      "finance-archive",
+      "192.168.50.23",
+      "192.168.50.1",
+      "grafana.lan",
+      "172.16.9.4",
+      "q8Xv2mZ4pL0kT7nR3wY9bC6dF1gH5jK8sA2eU4iO7vM"
+    ],
+    "model": [
+      "laptop-kchen"
+    ]
+  },
+  "windows_security.log": {
+    "rule": [
+      "WS-FIN-0142",
+      "S-1-5-21-3623811015-3361044348-30300820-1013",
+      "CONTOSO",
+      "tbrennan",
+      "10.40.12.88",
+      "svc_backup",
+      "fs02.contoso.local",
+      "HR-Payroll"
+    ],
+    "model": []
+  },
+  "app.env": {
+    "rule": [
+      "Xq7!vR2pLm9w",
+      "pg-primary.internal",
+      "Rds-9f8e7d6c5b4a",
+      "cache01.lan",
+      "AKIAZ4X7Q2M5KD3LT7VB",
+      "ZZNcTp6FvO6Hzifj0gczznKz5ObQ3DfNBxxg+6d/",
+      "sk_live_T467cBsVjdODwyenwQRPMqTn",
+      "ghp_IWPU7wVJZKPqqeTi8d5ku0fmC8I1q4dJjBwM",
+      "sk-ant-api03-tf-Lcts7k_6cwyuECf47ZNOd2TnvkbMyuznkuZFh3D1Q78yjjirUIWdaFhoYJKta1M_VePbhlgV31Y8wb-xyj2ylu1CkCAA",
+      "xoxb-32769684235-693962795008-MmPBtW89IuXz3wo6t5CLy9Oy",
+      "LymOChQptdFYTnwIv7rLgR2R",
+      "7ad8ce9e5af0fafecdbc17efeb5f89c5fb9cbecbadd14af3",
+      "MailRelay#2026",
+      "ops-alerts@contoso.com",
+      "DCBUJVPTTVTZVLCZG33ZO4EOALZRVQ4L"
+    ],
+    "model": []
+  },
+  "docker-compose.yml": {
+    "rule": [
+      "Pg_Secr3t_2026",
+      "k2yVX+4TTJ7+L0I3xv3aKU7eBNNMK5+ZEG294Ip+6Xg=",
+      "nHVzg/J1MXWOBGjEZbnRB5g+MxoX9/0PZwhS78WPH5K5GAI8ftsfxpTgOicJmUc7B0tIs/0HWxFc2Vi1OYv7Bg==",
+      "registry.contoso.local",
+      "482913570024",
+      "pg-primary.internal",
+      "10.20.8.31"
+    ],
+    "model": []
+  },
+  "docker-config.json": {
+    "rule": [
+      "ZGVwbG95Ym90OmVhSU9xdUNiT3NLb0hFemh3ZFhh",
+      "registry.contoso.local"
+    ],
+    "model": []
+  },
+  "npmrc": {
+    "rule": [
+      "npm_MyHQbCeLm4SIyVtnYHFRNNAKCTLizyVyleqv"
+    ],
+    "model": []
+  },
+  "kubeconfig.yaml": {
+    "rule": [
+      "k8s-api.contoso.internal",
+      "prod-east-cluster",
+      "billing-prod",
+      "deploy-bot",
+      "rZIZfR7rEqjUgWn45jTSkjcQadpYwhtmQeUGBNHK7yU8zfmZlT1xTn8SHQ6dU6pg"
+    ],
+    "model": []
+  },
+  "network.cfg": {
+    "rule": [
+      "core-sw-01",
+      "hx5rVt7rPNoS4wqbXKX7m0",
+      "netadmin",
+      "nhEmQVczB7dqsO$X.HsgL6x1il0RxkOSSvyQYwucySCt7qFm4hMnBe0B2a",
+      "Wh1sk3yTango",
+      "R4d1usSh4red!",
+      "10.0.0.15",
+      "10.120.0.1",
+      "0050.56c0.0008",
+      "192.0.2.66",
+      "BgpPeer#77",
+      "CorpWifi-Winter2026",
+      "CONTOSO-CORP"
+    ],
+    "model": []
+  },
+  "wg0.conf": {
+    "rule": [
+      "uH+LM5m1oqkReajSrm3qQ3iW7GJfAft730O9VrWc7xE=",
+      "k2yVX+4TTJ7+L0I3xv3aKU7eBNNMK5+ZEG294Ip+6Xg=",
+      "100.88.12.5",
+      "vpn-gw.contoso.internal",
+      "10.20.0.0/16"
+    ],
+    "model": []
+  },
+  "queries.sql": {
+    "rule": [
+      "PayrollDB",
+      "emp_ssn",
+      "full_name",
+      "net_amount",
+      "employees",
+      "payroll_runs",
+      "dana.whitfield@contoso.com",
+      "kchen",
+      "audit_payroll_access",
+      "accessed_by",
+      "usp_RecalcBonuses",
+      "sqlprod02.contoso.local",
+      "svc_payroll",
+      "Hunter2!x",
+      "quarter close"
+    ],
+    "model": []
+  },
+  "app.py": {
+    "rule": [
+      "api.internal.contoso.local",
+      "sJusu4s6cqAuvSfP5IWLrIrc4u41d7iBF4FPYKvk",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4ODEyIiwibmFtZSI6InN2YyJ9.x3c2NnPKg_UPdUQBndhZYeZaf36kP5Bl6UVessnD0ur",
+      "CUST-448812",
+      "48ec8a833d54bfd4a3e4acbfdb092ccd",
+      "contoso-fin",
+      "billing-core",
+      "ghp_IWPU7wVJZKPqqeTi8d5ku0fmC8I1q4dJjBwM",
+      "482913570024"
+    ],
+    "model": []
+  },
+  "nginx_access.log": {
+    "rule": [
+      "203.0.113.9",
+      "alice.nguyen@contoso.com",
+      "portal.contoso.local",
+      "2001:db8:85a3::8a2e:370:7334",
+      "10.20.4.17"
+    ],
+    "model": [
+      "jsmith"
+    ]
+  },
+  "ticket_notes.txt": {
+    "rule": [
+      "frank.c@halvorsen-logistics.com",
+      "937-555-0148",
+      "4410 Birchwood Ave",
+      "4111 1111 1111 1111",
+      "523-41-8876"
+    ],
+    "model": [
+      "Priya Natarajan",
+      "Halvorsen Logistics",
+      "Frank Castellano",
+      "Marcus Oyelaran",
+      "Bluefin",
+      "Greta Lindqvist",
+      "Northwind Traders",
+      "Dayton"
+    ]
+  },
+  "incident_report.txt": {
+    "rule": [],
+    "model": [
+      "Samuel Achterberg",
+      "Ingrid Halvorsen",
+      "Stormcrow",
+      "Pemberton Freight",
+      "Lucia Ferreira-Mendes",
+      "Brightwater Medical",
+      "Olsen & Daughters Ltd",
+      "Deepak Raghunathan",
+      "Kestrel",
+      "Wojciech Nowakowski",
+      "Tamsin O'Keefe",
+      "Leeds",
+      "Akosua Mensah",
+      "Harold Vanstone",
+      "Yusuf Demir"
+    ]
+  }
+}

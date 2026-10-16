@@ -1,0 +1,15 @@
+INCIDENT 2026-118 - billing export outage (draft for the post-mortem)
+
+Timeline
+09:05  On-call engineer Samuel Achterberg noticed the export queue backing up.
+09:12  Samuel paged Ingrid Halvorsen, who owns the Stormcrow ledger service.
+09:30  Ingrid confirmed that the nightly sync from Pemberton Freight had stalled.
+09:41  Customer success (Lucia Ferreira-Mendes) reported that Brightwater Medical and Olsen & Daughters Ltd
+       could not download invoices.
+10:02  Rollback approved by Deepak Raghunathan; Project Kestrel release was paused.
+10:15  Wojciech Nowakowski restarted the sync workers; Tamsin O'Keefe verified the fix from the Leeds office.
+
+Follow-ups
+- Akosua Mensah to add alerting for the Stormcrow queue depth.
+- Contact at Pemberton Freight is Harold Vanstone; send him the incident summary.
+- Brightwater Medical asked for a credit; route to Yusuf Demir in finance.

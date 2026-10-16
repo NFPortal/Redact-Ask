@@ -1,0 +1,4 @@
+Ticket HX-20931: Priya Natarajan from Halvorsen Logistics called about failed invoice exports.
+She asked us to contact Frank Castellano (frank.c@halvorsen-logistics.com, +1 937-555-0148) at 4410 Birchwood Ave, Dayton.
+Escalated to Marcus Oyelaran on the Bluefin project team; Greta Lindqvist from Northwind Traders is cc'd.
+Card on file 4111 1111 1111 1111 was declined; SSN on the HR record is 523-41-8876.

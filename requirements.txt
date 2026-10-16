@@ -1,0 +1,12 @@
+# Install PyTorch first, with CUDA on an NVIDIA machine:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+# or CPU only:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+gliner>=0.2.29
+cryptography>=45
+keyring>=25
+platformdirs>=4
+pyperclip>=1.9
+regex>=2024.11.6
+pyahocorasick>=2.1
+pytest>=8

@@ -1,0 +1,42 @@
+# redact-ask configuration.
+# Copied to your user config folder on first run:
+#   Windows: %APPDATA%\redact-ask\config.toml
+#   Debian:  ~/.config/redact-ask/config.toml
+
+default_target = "claude"          # "claude" | "copilot", optionally with a model: "claude:opus"
+max_lines = 5000
+max_bytes = 1_000_000
+session_expiry_days = 14           # sessions and audit log entries
+max_scan_retries = 2
+cloud_timeout_seconds = 300
+context = "isolated"               # "isolated" | "full" (applies to Claude and Copilot)
+copilot_max_arg_chars = 30000      # only used if copilot can't read the prompt from stdin
+
+# Hostname suffixes treated as internal (in addition to anything in lists/hosts.txt).
+internal_suffixes = [".local", ".lan", ".internal", ".corp", ".home.arpa", ".intranet", ".private"]
+
+[types]
+# Per-type overrides for the configurable types in the SPEC Redaction Catalog.
+# "Always" types cannot be turned off.
+BUCKET = false
+# IP_PRIVATE = true
+# IP_LOCAL = false
+# PORT = false
+# UUID = false
+
+[paths]
+mode = "segments"                  # only sensitive path segments are redacted
+
+[ip]
+private_subnet_prefix = 24         # used when no subnets.txt range or CIDR in the text covers an IP
+
+[gliner]
+model = "nvidia/gliner-pii"        # alternative: "urchade/gliner_multi_pii-v1"
+threshold = 0.3                    # low threshold = over-redact
+device = "auto"                    # auto | cuda | cpu
+allow_download = true              # download the model weights on first run only
+
+[llm]
+enabled_by_default = false
+url = "http://localhost:11434"     # must be localhost
+model = "qwen3:8b"

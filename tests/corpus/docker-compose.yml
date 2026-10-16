@@ -1,0 +1,11 @@
+services:
+  api:
+    image: registry.contoso.local:5000/billing/api:2.4.1
+    environment:
+      - DB_PASSWORD=Pg_Secr3t_2026
+      - JWT_SIGNING_KEY=k2yVX+4TTJ7+L0I3xv3aKU7eBNNMK5+ZEG294Ip+6Xg=
+      - STORAGE_CONN=DefaultEndpointsProtocol=https;AccountName=contosobilling;AccountKey=nHVzg/J1MXWOBGjEZbnRB5g+MxoX9/0PZwhS78WPH5K5GAI8ftsfxpTgOicJmUc7B0tIs/0HWxFc2Vi1OYv7Bg==;EndpointSuffix=core.windows.net
+  worker:
+    image: 482913570024.dkr.ecr.us-east-1.amazonaws.com/billing-worker:latest
+    extra_hosts:
+      - "pg-primary.internal:10.20.8.31"
