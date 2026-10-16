@@ -9,7 +9,8 @@ sent to a cloud AI CLI (Claude Code or GitHub Copilot CLI) for analysis, and can
 values in the answer locally. Real values never leave the machine.
 
 ## Users & Workflow
-- Single user (the author), technical, working in a terminal on **Windows 11** and **Debian**.
+- A technical user working alone in a terminal on **Windows 11** or **Debian**; each install
+  serves one person.
 - Typical use: copy or point at a log/code snippet, ask a question, get an answer from Claude or
   Copilot (as written, with placeholders; `--restore` puts the real values back). Follow-up questions
   continue the same cloud conversation.

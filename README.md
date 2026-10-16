@@ -12,7 +12,8 @@ to see it with the real values put back. See `SPEC.md` for the design.
 Needs Python 3.11+, and `claude` and/or `copilot` installed and logged in.
 
 ```
-cd "C:\Programming\Tools\Redact Ask"
+git clone https://github.com/NFPortal/Redact-Ask.git
+cd Redact-Ask
 python -m venv .venv
 .venv\Scripts\python -m pip install torch --index-url https://download.pytorch.org/whl/cu128   # CPU: .../whl/cpu
 .venv\Scripts\python -m pip install -r requirements.txt
@@ -23,9 +24,32 @@ The GLiNER model (`nvidia/gliner-pii`) downloads on the first run; after that it
 
 ## Use
 
-`redact-ask` below is the PowerShell profile function; without it, use
-`.venv\Scripts\python redact_ask.py`. The question always goes after `-q`; anything else you type is
-the text to analyze.
+Run it with `.venv\Scripts\python redact_ask.py` (Debian: `.venv/bin/python redact_ask.py`). The
+examples below use a `redact-ask` shortcut. On Windows, add this function to your PowerShell profile
+(`notepad $PROFILE`), with the path changed to where you cloned the repo:
+
+```powershell
+function redact-ask {
+    $dir = "C:\path\to\Redact-Ask"
+    $py = "$dir\.venv\Scripts\python.exe"
+    $script = "$dir\redact_ask.py"
+    if ($MyInvocation.ExpectingInput) {
+        # Forward piped text (e.g. Get-Clipboard -Raw | redact-ask -q "question") as UTF-8.
+        $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+        $input | & $py $script @args
+    } else {
+        & $py $script @args
+    }
+}
+```
+
+On Debian, add an alias to `~/.bashrc`:
+
+```bash
+alias redact-ask='~/Redact-Ask/.venv/bin/python ~/Redact-Ask/redact_ask.py'
+```
+
+The question always goes after `-q`; anything else you type is the text to analyze.
 
 ```
 redact-ask '<paste the log or code here>' -q "Why are logins failing?"
