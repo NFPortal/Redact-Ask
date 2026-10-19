@@ -74,6 +74,8 @@ class Config:
     context: str = "isolated"
     copilot_max_arg_chars: int = 30000
     preview: bool = True
+    local_tools: bool = False
+    hook_timeout_seconds: int = 120
     internal_suffixes: list[str] = field(default_factory=lambda: [
         ".local", ".lan", ".internal", ".corp", ".home.arpa", ".intranet", ".private"])
     type_overrides: dict[str, bool] = field(default_factory=lambda: {"BUCKET": False})
@@ -134,17 +136,20 @@ def load(path: Path | None = None) -> Config:
 def from_dict(raw: dict) -> Config:
     c = Config()
     simple = ["default_target", "max_lines", "max_bytes", "session_expiry_days", "max_scan_retries",
-              "cloud_timeout_seconds", "context", "copilot_max_arg_chars", "internal_suffixes", "preview"]
+              "cloud_timeout_seconds", "context", "copilot_max_arg_chars", "internal_suffixes", "preview",
+              "local_tools", "hook_timeout_seconds"]
     for key in simple:
         if key in raw:
             setattr(c, key, raw[key])
 
     parse_target(c.default_target)
-    if not isinstance(c.preview, bool):
-        raise UsageError("config: preview must be true or false.")
+    for key in ("preview", "local_tools"):
+        if not isinstance(getattr(c, key), bool):
+            raise UsageError(f"config: {key} must be true or false.")
     if c.context not in ("isolated", "full"):
         raise UsageError(f"config: context must be 'isolated' or 'full', not '{c.context}'.")
-    for key in ("max_lines", "max_bytes", "session_expiry_days", "cloud_timeout_seconds", "copilot_max_arg_chars"):
+    for key in ("max_lines", "max_bytes", "session_expiry_days", "cloud_timeout_seconds", "copilot_max_arg_chars",
+                "hook_timeout_seconds"):
         if not isinstance(getattr(c, key), int) or getattr(c, key) <= 0:
             raise UsageError(f"config: {key} must be a positive whole number.")
     if not isinstance(c.max_scan_retries, int) or c.max_scan_retries < 0:

@@ -1,6 +1,6 @@
 # Redact Ask — Specification
 
-_Last updated: 2026-10-16_
+_Last updated: 2026-10-19_
 
 ## Goal
 A local command-line tool that redacts sensitive data (credentials, identities, network and
@@ -25,6 +25,9 @@ values in the answer locally. Real values never leave the machine.
 - Consistent, typed placeholders per session; encrypted mapping storage.
 - Fail-closed final scan with automatic re-redaction (max 2 retries).
 - Sending to Claude Code or Copilot CLI in an isolated temp folder with web tools only.
+- Optional `--local-tools` (Claude Code only): Claude works in the current folder with read-only local
+  tools, and a hook redacts every tool result with the session's mapping before the model sees it
+  (see [19], [20]).
 - Printing the answer as the model wrote it (placeholders); `--restore` restores real values; optional `--out` file.
 - Audit log of what left the machine (redacted only).
 - Post-run approval prompt to add newly detected values to the lists.
@@ -42,6 +45,9 @@ values in the answer locally. Real values never leave the machine.
 ### Later phase
 - `redact_hook.py`: Claude Code and Copilot CLI hook tripwires that reuse the final scan to block
   prompts containing secrets and deny reads of sensitive paths in normal interactive sessions.
+  (Not the same as `--local-tools`: those hooks exist only inside a redact-ask run and never in the
+  user's normal sessions.)
+- `--local-tools` for Copilot CLI.
 
 ## Inputs & Outputs
 
@@ -67,6 +73,9 @@ Options:
                         (on by default: config `preview = true`; set it to false to send without asking;
                         the default preview is skipped when nothing was redacted, --preview always asks)
   --dry-run             Show the exact redacted text and stop; nothing is sent
+  --local-tools         Claude only: let Claude read files, search and run commands in the current
+                        folder; every tool result is redacted before Claude sees it (see [19], [20]).
+                        Config `local_tools = true` makes it the default.
 
 python redact_ask.py sessions list
 python redact_ask.py sessions clear [NAME | --all]
@@ -78,6 +87,8 @@ pipeline.
 
 ### Input limits
 - Up to **5,000 lines or 1 MB**, whichever comes first (configurable). Larger input is refused.
+- With `--local-tools`, each tool result is held to the same limits: longer output is cut at the
+  limit (with a note telling Claude it was truncated) before it is redacted.
 
 ### Output
 - The model's answer on stdout, with placeholders by default or real values with `--restore`;
@@ -133,6 +144,10 @@ Lists and mappings contain real sensitive values and are **never stored in the p
               [14] audit_log  (redacted text, status "sending")
                        │
               [15] cloud_runner ── answer with placeholders
+                 │     ▲
+                 │     │ --local-tools only, for every tool call Claude makes:
+                 │     │ [20] hook_client ─► [19] hook_server ─► [4]-[13] (same mapping)
+                 │     │      redacted tool result ◄──────────── (logged by [14] as "tool_output")
                        │
               [14] audit_log  (redacted answer, status "done"/"error")
                        │
@@ -146,7 +161,9 @@ Lists and mappings contain real sensitive values and are **never stored in the p
 Rules for the flow:
 - **Raw text exists only in memory.** No script writes unredacted input to disk (no temp files).
 - Only `cloud_runner` sends data off the machine, and it only ever receives the output of a passed
-  `final_scan`.
+  `final_scan`. With `--local-tools`, the cloud CLI also sends tool results, but only the copies
+  [19] redacted through the same pipeline (including `final_scan`); if that fails, the run stops
+  before the result reaches the model.
 - Any failure before `cloud_runner` (detector crash, key error, scan failure) means **nothing is
   sent**.
 - Detectors [4]–[8] are independent: each takes the same text and returns its own Findings.
@@ -214,6 +231,8 @@ Redact Ask/
     unmasker.py              # [16]
     output_writer.py         # [17]
     learner.py               # [18]
+    hook_server.py           # [19] --local-tools: redacts tool output during the cloud call
+    hook_client.py           # [20] --local-tools: the Claude Code hook (standard library only)
     rules/gitleaks.toml      # vendored, pinned gitleaks rule set
   tests/
     corpus/                  # planted-secrets sample files + expected findings
@@ -231,6 +250,10 @@ do. A script may only depend on `models.py`, `config.py`, and the scripts named 
   - Call the scripts in the order of the data flow.
   - Run the final-scan retry loop: up to **2** re-redaction passes, then abort with exit 4.
   - Map exceptions from each stage to the exit codes above.
+  - `--local-tools`: refuse it for Copilot (exit 2); start [19] with the same redaction pipeline and
+    session mapping for the length of the cloud call; afterwards log each redacted tool result
+    with [14] and save the session (also when the call fails), because placeholders made for tool
+    output were sent and `--restore` and follow-ups need them.
 - **Must not:** contain detection, replacement, encryption, or subprocess logic.
 
 ### [2] `config.py` — settings
@@ -247,6 +270,8 @@ do. A script may only depend on `models.py`, `config.py`, and the scripts named 
   cloud_timeout_seconds = 300
   context = "isolated"               # "isolated" | "full" — applies to Claude and Copilot (see [15])
   copilot_max_arg_chars = 30000      # only used if copilot -p can't read stdin (see [15])
+  local_tools = false                # true = --local-tools on every run (see [19], [20])
+  hook_timeout_seconds = 120         # --local-tools: longest wait to redact one tool result
 
   [types]                            # per-type on/off overrides for "your call" items
   BUCKET = false
@@ -430,7 +455,8 @@ do. A script may only depend on `models.py`, `config.py`, and the scripts named 
   redacted answer.
 - **Output:** one JSON line per run in `audit.jsonl`.
 - **Responsibilities:** write a "sending" entry before the cloud call and complete it afterwards
-  with the redacted answer and status (`done` / `error`).
+  with the redacted answer and status (`done` / `error`). With `--local-tools`, also one
+  `tool_output` entry per tool call with the tool name and the redacted result the model received.
 - **Retention:** entries older than `session_expiry_days` (default 14) are deleted on every run, the
   same rule as sessions.
 - **Must not:** ever receive the `Mapping` or any real value. Not encrypted (contains only
@@ -465,8 +491,29 @@ do. A script may only depend on `models.py`, `config.py`, and the scripts named 
       the login is used.
     - `full`: the CLI loads the user's normal setup as in an ordinary session. These files are
       sent **unredacted**; this is the user's choice. Tool restrictions (web only) still apply.
-  - **Tools: web search and web fetch only.** Deny file reading and writing, shell, and all MCP
-    servers.
+  - **Tools: web search and web fetch only** (except with `--local-tools`, below). Deny file
+    reading and writing, shell, and all MCP servers.
+  - **`--local-tools` (Claude only):**
+    - The CLI runs in the user's current folder (never emptied), not the per-session folder.
+      Claude Code finds a conversation by ID in any folder, so follow-ups still resume.
+    - Tools: `Read,Grep,Glob,Bash,WebSearch,WebFetch` in both `--tools` and `--allowedTools`. No
+      Edit/Write; no subagents (the Agent tool isn't listed), so every tool call goes through the hook.
+    - `--settings <JSON>` adds, for this run only: a `PostToolUse` hook (matcher `*`) and a
+      `PreToolUse` hook (matcher `Read`), both running `<venv python> -I hook_client.py` with
+      `onFailure: "block"` and a timeout of `hook_timeout_seconds` + 60 s; plus
+      `includeGitInstructions: false` and `autoMemoryEnabled: false`. Nothing is written to the
+      user's Claude Code settings.
+    - Isolated context drops `--safe-mode` (it turns hooks off) and keeps `--setting-sources ""`,
+      which still keeps CLAUDE.md, memories, plugins and user/project settings and hooks out
+      (verified live against 2.1.303: a CLAUDE.md marker and a git commit message in the folder
+      were not visible).
+    - The system prompt (`LOCAL_INSTRUCTIONS`) tells Claude that tool output is redacted, that
+      searching for a placeholder finds nothing (search by key name or pattern), and not to modify
+      files.
+    - The hook server's URL, token and timeout reach the hook through environment variables of
+      the CLI process.
+    - A run the hook stopped (`terminal_reason: "hook_stopped"`) → exit 5 with the cause; it is
+      never retried as a new conversation.
     - Claude: `claude -p --output-format json` with `--allowedTools` for the web tools,
       `--disallowedTools` for everything else, an empty MCP config with `--strict-mcp-config`,
       `--model` when given, `--resume <id>` for follow-ups.
@@ -504,6 +551,46 @@ do. A script may only depend on `models.py`, `config.py`, and the scripts named 
     (a scripted run such as `2>&1 | grep`, where nobody can answer), skip and print a note.
   - Ignore duplicates; keep list files sorted.
 - **Must not:** run if nothing new was found; must not change Findings or the mapping.
+- Only values from the user's own input are offered, never values found in tool output.
+
+### [19] `hook_server.py` — redact tool output (`--local-tools`)
+- **Input:** strings from one tool result (from [20]); a redaction function supplied by [1]
+  (the same pipeline [4]–[13] with the session's mapping).
+- **Output:** the strings redacted, in the same order; a list of redacted results for [14]; the
+  errors, for the exit message.
+- **Responsibilities:**
+  - Run for exactly one cloud call: an HTTP server on `127.0.0.1` with a random port and a random
+    32-byte token (checked in constant time); stopped when the call ends.
+  - Cut each string to `max_lines` / `max_bytes` (with a note) before redacting it.
+  - One request at a time (they all update the same mapping), so placeholders stay consistent
+    with the prompt, other tool results and follow-ups.
+  - Any redaction failure (`ScanAbort`, detector error, anything else) → an error reply, so [20]
+    stops the run.
+- **Must not:** return the mapping or any real value; there is no request that does. Must not
+  listen on anything but localhost.
+
+### [20] `hook_client.py` — the Claude Code hook (`--local-tools`)
+- **Input:** Claude Code's hook event on stdin; the server URL, token and timeout from the
+  environment.
+- **Output:** hook JSON on stdout.
+- **Responsibilities:**
+  - Standard library only, run with `python -I`, so it starts fast and can't import code from the
+    folder Claude is working in.
+  - `PostToolUse`: collect every string in `tool_response` (skipping the `type` and `mode` enum
+    values), send them to [19], and return `updatedToolOutput` with the **same structure** and the
+    redacted strings. (Claude Code ignores a replacement whose structure doesn't match the
+    tool's and sends the original, so the structure is never changed.)
+  - Output that isn't text (`isImage`, a `base64` field, an image or document block) → stop.
+  - `PreToolUse` on `Read`: deny images and PDFs (`.png`, `.jpg`, `.gif`, `.webp`, `.pdf`, …)
+    with a reason, so Claude carries on with text files.
+  - **Fail closed:** any error (server unreachable, bad token, error reply, timeout, malformed
+    event) → `{"continue": false}` with a fixed stop reason. Verified live: this ends the run
+    before the model sees the output. The stop reason stays in the conversation, so it never
+    contains output or error details.
+  - Give up after `hook_timeout_seconds`, 60 s before Claude Code's own hook timeout. Verified
+    live: a hook that Claude Code times out lets the **original** output through, even with
+    `onFailure: "block"`; a hook that crashes is blocked.
+- **Must not:** write anything to disk, or print tool output anywhere but its JSON reply.
 
 ## Redaction Catalog
 
@@ -602,15 +689,22 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 - [ ] By default the answer is printed exactly as the model wrote it; with `--restore` it contains
       the original values for every known placeholder.
 - [ ] Works on Windows 11 and Debian (passphrase prompt works in both).
-- [ ] The cloud CLI cannot read local files or run commands (verified by asking it to read a known
-      file and checking that it can't).
+- [ ] Without `--local-tools`, the cloud CLI cannot read local files or run commands (verified by
+      asking it to read a known file and checking that it can't).
 - [ ] A 5,000-line log is processed (excluding the cloud call) in under 30 s on the RTX PRO 2000
       laptop. _(Target to confirm after measuring.)_
+- [x] `--local-tools`: Claude reading a planted `.env` with Bash `cat`, Read and Grep sees only
+      placeholders, and the folder's CLAUDE.md is not loaded (live test
+      `test_live_local_tools_only_see_redacted_files`; Claude Code's own transcript also holds only
+      the redacted output).
+- [x] `--local-tools` fails closed: server down, bad token, redaction error, timeout and non-text
+      output all stop the run before the model sees the output (`tests/test_local_tools.py`).
+- [x] Without `--local-tools`, the cloud CLI's command line and folder are unchanged.
 
 ## Decisions
 | Decision | Rationale | Date |
 |---|---|---|
-| Custom CLI wrapper, not hooks or a proxy | Only option that guarantees redaction runs before anything is sent; hooks can block but not rewrite, and don't see tool output | 2026-10-16 |
+| Custom CLI wrapper, not hooks or a proxy — still the design; hooks are now added inside it for `--local-tools` (see the 2026-10-19 rows) | Only option that guarantees redaction runs before anything is sent; hooks can block but not rewrite, and don't see tool output (no longer true: `PostToolUse` can replace tool output) | 2026-10-16 |
 | Python 3.11+, run from the project folder | GLiNER and the secret tooling are Python-native; no packaging needed | 2026-10-16 |
 | Inputs: file, stdin, clipboard (no folders) — clipboard superseded by the next row | Matches the user's workflows | 2026-10-16 |
 | Default input is text passed on the command line; files need `--file`; `--clip` removed and the clipboard is never read | User decision | 2026-10-16 |
@@ -661,6 +755,15 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 | Merged overlaps: a containing finding keeps its type (IMAGE over HOST) unless it is generic (ENV_VALUE, SQL_VALUE, ...) or the inner one is a secret | Keeps placeholders meaningful while never downgrading a secret | 2026-10-16 |
 | `REDACT_ASK_HOME` puts all user folders in one place; tests replace the passphrase prompt | Used by the tests so they never touch real data, the real keyring or a real terminal | 2026-10-16 |
 | GLiNER model: `nvidia/gliner-pii` by default; `urchade/gliner_multi_pii-v1` kept as the alternative in config | Newest GLiNER PII model with the broadest type coverage (55+); best published results at threshold 0.3 | 2026-10-16 |
+| `--local-tools` (opt-in flag and config `local_tools`, default off): Claude may read files and run commands in the current folder; a `PostToolUse` hook redacts every tool result before the model sees it | User wants the model to look at local files itself without seeing the secrets in them. Goal: keep Claude from *seeing* secrets it comes across, not stop a model that deliberately tries to extract them (accepted by user) | 2026-10-19 |
+| The hooks exist only in the `claude` process redact-ask starts (`--settings`), never in the user's Claude Code settings | User wants the redaction only when using redact-ask | 2026-10-19 |
+| Real values only come back in the final answer with `--restore`; tool inputs are never un-redacted | User decision: restore only the final response, not the calls the model makes on its own | 2026-10-19 |
+| Tool output is redacted in redact-ask's own process (localhost server for the length of the call), not by running redact_ask.py per tool call | One passphrase prompt and one GLiNER load per run; same mapping as the prompt, so placeholders match and `--restore` covers values found by tools | 2026-10-19 |
+| Bash is allowed with `--local-tools`; Edit/Write are not | User accepted: `cat` output goes through the same hook. Without un-redacted inputs, edits to redacted lines can't work anyway | 2026-10-19 |
+| Fail closed with `continue: false` (not `decision: "block"`), and the hook gives up before Claude Code's timeout | Verified live (2.1.303): `block` still shows the original output; a timed-out hook lets it through even with `onFailure: "block"`; `continue: false` ends the run first | 2026-10-19 |
+| Tool output over the input limits is cut (with a note), not refused | Large grep/cat output is common; stopping the whole run for it would make the mode unusable, and cutting can't leak | 2026-10-19 |
+| Images and PDFs: `Read` denied before it runs; any other non-text output stops the run | Pictures can't be redacted as text | 2026-10-19 |
+| `--local-tools` is Claude-only for now | Copilot CLI's hooks differ; later phase | 2026-10-19 |
 | SQL table and column aliases (`FROM ShipmentInfo si`, `SUM(x) AS total`) are never redacted, by any detector or the final scan (secrets excepted); a finding that runs into an alias (`ShipmentInfo si`) is cut back to the table name | They are the query's own names, and redacting them made the query unreadable (`si.Col` became `<TABLE_1>.Col` in some places only) | 2026-10-16 |
 
 ## Edge Cases & Failure Behavior
@@ -687,6 +790,16 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 - **Cloud CLI not logged in / not installed / timeout** → exit 5; the audit entry is marked `error`.
 - **Target changed mid-session** → new conversation for that target; mapping is shared.
 - **No terminal for the learner prompt** → skip and print a note.
+- **`--local-tools` with Copilot** → exit 2.
+- **`--local-tools`: a tool result can't be redacted** (final scan aborts, detector error, server
+  unreachable, takes longer than `hook_timeout_seconds`, output isn't text) → the hook stops the
+  run, nothing more reaches the model, exit 5 with the cause; the audit entry is marked `error`;
+  the session (with placeholders already sent) is still saved.
+- **`--local-tools`: tool output too large** → cut at `max_lines` / `max_bytes` with a note, then
+  redacted.
+- **`--local-tools`: Claude opens a path that contains a placeholder** (e.g. a home folder shown as
+  `C:\Users\<USER_1>\...`) → the tool fails; paths are not un-redacted (by decision). Claude can
+  still use relative paths in the working folder.
 
 ## Open Questions & Risks
 ### Resolved during the build (2026-10-16)
@@ -706,6 +819,22 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
   known to Anthropic), but it is not redacted and no option to turn it off was found.
 - **CPU-only speed** (Debian without a GPU) has not been measured.
 - **Debian** has not been tested yet.
+- **`--local-tools`: the working-folder path is not redacted.** Claude Code adds the working
+  directory (e.g. `C:\Users\<name>\...`) to the context even with `--system-prompt`, without a
+  tool call, so the hook never sees it. Run from a folder whose path holds nothing sensitive.
+- **`--local-tools`: Bash can transform output past the detectors.** `base64`, `xxd`, `rev`,
+  `cut -c`, or yes/no tests one character at a time can show a secret in a form the detectors
+  don't recognise (`ENCODED` catches some hex/base64). This mode keeps Claude from *seeing* secrets
+  it comes across; it doesn't stop a model that deliberately tries to extract them, for example
+  when told to by text planted in a log (prompt injection). Accepted by the user; a `PreToolUse`
+  deny-list for such commands is a possible later step.
+- **`--local-tools`: Bash can change files.** Edit/Write are off and the instructions say not to
+  modify files, but Bash itself isn't read-only.
+- **`--local-tools`: other ways into the context.** Anything Claude Code adds without a tool call
+  bypasses the hook (the working-directory line above; the account email, as in isolated mode).
+  Re-check after Claude Code updates; `test_live_local_tools_only_see_redacted_files` covers
+  CLAUDE.md and the planted file.
+- **`--local-tools`: speed.** Every tool result goes through GLiNER, so large reads are slow.
 - **Over-redaction:** union spans sometimes hide useful context (for example a whole connection
   string becomes one `<SECRET_n>`); acceptable under the over-redact decision, revisit if answers
   suffer.

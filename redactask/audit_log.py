@@ -35,6 +35,11 @@ class AuditLog:
         })
         return run_id
 
+    def tool_output(self, run_id: str, tool: str, redacted: list[str]) -> None:
+        """--local-tools: one redacted tool result the model received during the run."""
+        self._append({"run_id": run_id, "time": now().isoformat(), "status": "tool_output", "tool": tool,
+                      "sent_text": redacted})
+
     def finish(self, run_id: str, status: str, redacted_answer: str | None = None, error: str | None = None) -> None:
         entry = {"run_id": run_id, "time": now().isoformat(), "status": status}
         if redacted_answer is not None:

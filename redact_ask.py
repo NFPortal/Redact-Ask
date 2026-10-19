@@ -3,7 +3,7 @@
 Only parses arguments and calls the other scripts in the order of the SPEC data flow.
 
     python redact_ask.py ["text to analyze" | --file PATH] -q "question" [--to TARGET[:MODEL]]
-                         [--session NAME] [--new-session] [--deep] [--restore] [--out FILE]
+                         [--session NAME] [--new-session] [--deep] [--restore] [--out FILE] [--local-tools]
     python redact_ask.py sessions list
     python redact_ask.py sessions clear [NAME | --all]
     python redact_ask.py reset-passphrase
@@ -13,10 +13,11 @@ from __future__ import annotations
 import argparse
 import sys
 from collections import Counter
+from pathlib import Path
 
-from redactask import (audit_log, cloud_runner, config, final_scan, gliner_detector, input_reader, key_manager,
-                       learner, lists_detector, llm_detector, masker, merger, output_writer, rules_detector,
-                       secrets_detector, unmasker)
+from redactask import (audit_log, cloud_runner, config, final_scan, gliner_detector, hook_server, input_reader,
+                       key_manager, learner, lists_detector, llm_detector, masker, merger, output_writer,
+                       rules_detector, secrets_detector, unmasker)
 from redactask.lists_detector import ListData
 from redactask.models import (EXIT_OK, Finding, Mapping, PLACEHOLDER_RE, RedactAskError, RunResult, ScanAbort,
                               UsageError)
@@ -95,6 +96,9 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--preview", action="store_true",
                    help="show the redacted text and ask before sending (or set preview = true in config)")
     p.add_argument("--dry-run", action="store_true", help="show the redacted text and stop; nothing is sent")
+    p.add_argument("--local-tools", action="store_true",
+                   help="let Claude read files and run read-only commands in the current folder; every tool "
+                        "result is redacted before Claude sees it (or set local_tools = true in config)")
     return p
 
 
@@ -155,6 +159,32 @@ def cmd_sessions(argv: list[str]) -> int:
     return EXIT_OK
 
 
+def run_with_local_tools(prompt: str, tool: str, model: str | None, session, store: SessionStore, cfg,
+                         lists: ListData, deep: bool, audit: audit_log.AuditLog,
+                         run_id: str) -> cloud_runner.CloudResult:
+    """[19] [20] Claude works in the current folder; every tool result is redacted with this session's
+    mapping by hook_server before the model sees it."""
+    def redact_tool_output(text: str) -> str:
+        return redact(text, session.mapping, cfg, lists, deep)[0].redacted_text
+
+    server = hook_server.HookServer(redact_tool_output, cfg.max_lines, cfg.max_bytes, cfg.hook_timeout_seconds)
+    try:
+        with server:
+            local = cloud_runner.LocalRun(Path.cwd(), server.env(), cfg.hook_timeout_seconds)
+            try:
+                return cloud_runner.run(prompt, tool, model, session.conversations.get(tool),
+                                        store.workdir(session.id), cfg.context, cfg.cloud_timeout_seconds, local)
+            except cloud_runner.HookStopped as e:
+                if server.errors:
+                    raise cloud_runner.HookStopped(f"{e.message} Cause: {server.errors[-1]}") from e
+                raise
+    finally:
+        for out in server.outputs:
+            audit.tool_output(run_id, out.tool, out.redacted)
+        # Placeholders made for tool output were sent: keep them for --restore and follow-ups.
+        store.save(session)
+
+
 def cmd_ask(argv: list[str]) -> int:
     a = _parser().parse_args(argv)
     if not a.query or not a.query.strip():
@@ -167,6 +197,9 @@ def cmd_ask(argv: list[str]) -> int:
         _err(w)
     tool, model = config.parse_target(a.to or cfg.default_target)
     deep = a.deep or cfg.llm.enabled_by_default
+    local_tools = a.local_tools or cfg.local_tools
+    if local_tools and tool != "claude":
+        raise UsageError("--local-tools works with Claude Code only (--to claude).")
     d = config.dirs()
 
     # [3] input
@@ -197,7 +230,8 @@ def cmd_ask(argv: list[str]) -> int:
     summary = ", ".join(f"{k} {v}" for k, v in counts.items()) or "nothing"
     _err(f"redacted {sum(counts.values())} value(s) ({summary})"
          f"{f'; {result.retries} re-scan pass(es)' if result.retries else ''}; sending to "
-         f"{tool}{':' + model if model else ''} ({cfg.context} context)...")
+         f"{tool}{':' + model if model else ''} ({cfg.context} context"
+         f"{f'; local tools in {Path.cwd()}, output redacted' if local_tools else ''})...")
 
     # [14] [15] send (after an optional preview)
     prompt = cloud_runner.build_prompt(result.redacted_text, tool)
@@ -214,8 +248,11 @@ def cmd_ask(argv: list[str]) -> int:
             return EXIT_OK
     run_id = audit.start(prompt, tool, model, session.id, counts, result.retries, inp.source)
     try:
-        cloud = cloud_runner.run(prompt, tool, model, session.conversations.get(tool), store.workdir(session.id),
-                                 cfg.context, cfg.cloud_timeout_seconds)
+        if local_tools:
+            cloud = run_with_local_tools(prompt, tool, model, session, store, cfg, lists, deep, audit, run_id)
+        else:
+            cloud = cloud_runner.run(prompt, tool, model, session.conversations.get(tool), store.workdir(session.id),
+                                     cfg.context, cfg.cloud_timeout_seconds)
     except RedactAskError as e:
         audit.finish(run_id, "error", error=e.message)
         raise
