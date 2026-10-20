@@ -76,6 +76,8 @@ Options:
   --local-tools         Claude only: let Claude read files, search and run commands in the current
                         folder; every tool result is redacted before Claude sees it (see [19], [20]).
                         Config `local_tools = true` makes it the default.
+  --live / --no-live    Show (or hide) the model's thinking, text, tool calls and subagents on stderr
+                        while it works (see [21]). Config `live_view = true` (the default) turns it on.
 
 python redact_ask.py sessions list
 python redact_ask.py sessions clear [NAME | --all]
@@ -94,6 +96,7 @@ pipeline.
 - The model's answer on stdout, with placeholders by default or real values with `--restore`;
   optionally also written to `--out FILE`.
 - Status and warnings on stderr (counts per type, retries, unknown placeholders).
+- The live view of the model's work on stderr while it runs (see [21]).
 
 ### Files and locations (via `platformdirs`)
 | What | Windows | Debian |
@@ -233,6 +236,7 @@ Redact Ask/
     learner.py               # [18]
     hook_server.py           # [19] --local-tools: redacts tool output during the cloud call
     hook_client.py           # [20] --local-tools: the Claude Code hook (standard library only)
+    live_view.py             # [21] shows thinking, text, tool calls and subagents while the CLI works
     rules/gitleaks.toml      # vendored, pinned gitleaks rule set
   tests/
     corpus/                  # planted-secrets sample files + expected findings
@@ -272,6 +276,7 @@ do. A script may only depend on `models.py`, `config.py`, and the scripts named 
   copilot_max_arg_chars = 30000      # only used if copilot -p can't read stdin (see [15])
   local_tools = false                # true = --local-tools on every run (see [19], [20])
   hook_timeout_seconds = 120         # --local-tools: longest wait to redact one tool result
+  live_view = true                   # show the model's work on stderr while it runs (see [21])
 
   [types]                            # per-type on/off overrides for "your call" items
   BUCKET = false
@@ -474,16 +479,25 @@ do. A script may only depend on `models.py`, `config.py`, and the scripts named 
     `copilot_max_arg_chars` is not needed (kept in config only as a fallback). Never enable file
     tools to work around a limit.
   - Flags (verified against Claude Code 2.1.301 and Copilot CLI 1.0.98):
-    - Claude: `claude -p --output-format json --tools WebSearch,WebFetch --allowedTools
+    - Claude: `claude -p --output-format stream-json --verbose --include-partial-messages
+      --forward-subagent-text --thinking-display summarized --tools WebSearch,WebFetch --allowedTools
       WebSearch,WebFetch --strict-mcp-config --disable-slash-commands`, plus `--safe-mode
       --setting-sources "" --system-prompt <instructions>` when isolated (`--append-system-prompt`
       when full); `--session-id <new uuid>` for a new conversation, `--resume <id>` for follow-ups.
-    - Copilot: `copilot -s --no-auto-update --no-ask-user --no-remote --disallow-temp-dir
+    - Copilot: `copilot -s --output-format json --no-auto-update --no-ask-user --no-remote --disallow-temp-dir
       --available-tools web_fetch --allow-tool web_fetch --session-id <id>` (same flag for new and
       follow-up), plus `--no-custom-instructions --disable-builtin-mcps` when isolated. Copilot has
       no system-prompt option, so the fixed instructions are prepended to the message. Copilot
       CLI has no web search tool; only web fetch is available.
   - If resuming a saved conversation fails, start a new one and warn.
+  - **Event streams** (verified against Claude Code 2.1.304 and Copilot CLI 1.0.98): stdout is read
+    line by line as JSON events and each one is handed to [21] while the CLI runs. Claude's answer
+    and conversation ID come from the `result` event; Copilot's answer is the last top-level
+    `assistant.message` with text. If the CLI rejects a live-view option (`unknown option`), the
+    call is run again without them: Claude with plain `stream-json --verbose`, Copilot without
+    `--output-format json` (its plain `-s` text is the answer, nothing is shown live).
+  - On `cloud_timeout_seconds` (or any early exit) the CLI is stopped with its child processes
+    (`taskkill /T` on Windows, where an npm `.cmd` shim starts node, which starts the CLI).
   - **Personal context** (`context` in config, one setting for both targets):
     - `isolated` (default): the cloud receives only a fixed redact-ask instruction, the redacted
       text and question, and the conversation history. User settings, global CLAUDE.md /
@@ -591,6 +605,23 @@ do. A script may only depend on `models.py`, `config.py`, and the scripts named 
     live: a hook that Claude Code times out lets the **original** output through, even with
     `onFailure: "block"`; a hook that crashes is blocked.
 - **Must not:** write anything to disk, or print tool output anywhere but its JSON reply.
+
+### [21] `live_view.py` — show the model's work while it runs
+- **Input:** the JSON events from [15], one at a time (Claude Code `stream-json` with partial
+  messages; Copilot CLI `--output-format json`).
+- **Output:** a transcript on stderr; the final `result` event (Claude) or answer (Copilot) for [15].
+- **Responsibilities:**
+  - Show thinking (dim, `○`), the model's text as it is written (`●`), each tool call with its main
+    argument (`● Bash(ls -la)`), the first 3 lines of each tool result (`└`, errors in red),
+    subagents indented under the call that started them (`│`), and a closing line with turns,
+    cost or premium requests and elapsed time (`■`).
+  - Text and thinking that arrive in pieces are shown once.
+  - Strip control characters (including escape sequences) from everything the model or a tool
+    produced, so output can't drive the terminal.
+  - Colors only on a terminal (VT mode turned on for Windows consoles), never with `NO_COLOR` or
+    `TERM=dumb`; ASCII glyphs when stderr's encoding can't show the Unicode ones.
+  - A display error never loses the answer: [15] ignores exceptions from the view.
+- **Must not:** receive the `Mapping` or restore values; write anywhere but stderr.
 
 ## Redaction Catalog
 
@@ -764,6 +795,8 @@ List-backed types (`USER`, `HOST`, `DOMAIN`, `DB`, `TABLE`, `COLUMN`, `PROC`, `P
 | Tool output over the input limits is cut (with a note), not refused | Large grep/cat output is common; stopping the whole run for it would make the mode unusable, and cutting can't leak | 2026-10-19 |
 | Images and PDFs: `Read` denied before it runs; any other non-text output stops the run | Pictures can't be redacted as text | 2026-10-19 |
 | `--local-tools` is Claude-only for now | Copilot CLI's hooks differ; later phase | 2026-10-19 |
+| Live view of the model's thinking, text, tool calls and subagents on stderr, on by default (`--no-live`, `live_view = false`); both CLIs run with JSON event streams | User wants to see what the model is doing instead of waiting for the final answer, in any terminal; stderr keeps stdout the answer alone. Shows placeholders only | 2026-10-20 |
+| Claude thinking requested with `--thinking-display summarized` (a hidden flag); run without it if rejected | Without it, recent models stream thinking with empty text (verified 2.1.304) | 2026-10-20 |
 | SQL table and column aliases (`FROM ShipmentInfo si`, `SUM(x) AS total`) are never redacted, by any detector or the final scan (secrets excepted); a finding that runs into an alias (`ShipmentInfo si`) is cut back to the table name | They are the query's own names, and redacting them made the query unreadable (`si.Col` became `<TABLE_1>.Col` in some places only) | 2026-10-16 |
 
 ## Edge Cases & Failure Behavior

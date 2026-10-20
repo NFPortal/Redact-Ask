@@ -14,6 +14,7 @@ preview = true                     # show the redacted text and ask before sendi
 copilot_max_arg_chars = 30000      # only used if copilot can't read the prompt from stdin
 local_tools = false                # true = always use --local-tools (Claude reads files here; their output is redacted)
 hook_timeout_seconds = 120         # --local-tools: longest wait to redact one tool result before the run is stopped
+live_view = true                   # show the model's thinking, text and tool calls while it works (--no-live to hide)
 
 # Hostname suffixes treated as internal (in addition to anything in lists/hosts.txt).
 internal_suffixes = [".local", ".lan", ".internal", ".corp", ".home.arpa", ".intranet", ".private"]
