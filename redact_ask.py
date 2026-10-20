@@ -4,6 +4,7 @@ Only parses arguments and calls the other scripts in the order of the SPEC data 
 
     python redact_ask.py ["text to analyze" | --file PATH] -q "question" [--to TARGET[:MODEL]]
                          [--session NAME] [--new-session] [--deep] [--restore] [--out FILE] [--local-tools]
+                         [--live | --no-live]
     python redact_ask.py sessions list
     python redact_ask.py sessions clear [NAME | --all]
     python redact_ask.py reset-passphrase
@@ -16,8 +17,8 @@ from collections import Counter
 from pathlib import Path
 
 from redactask import (audit_log, cloud_runner, config, final_scan, gliner_detector, hook_server, input_reader,
-                       key_manager, learner, lists_detector, llm_detector, masker, merger, output_writer,
-                       rules_detector, secrets_detector, unmasker)
+                       key_manager, learner, lists_detector, live_view, llm_detector, masker, merger,
+                       output_writer, rules_detector, secrets_detector, unmasker)
 from redactask.lists_detector import ListData
 from redactask.models import (EXIT_OK, Finding, Mapping, PLACEHOLDER_RE, RedactAskError, RunResult, ScanAbort,
                               UsageError)
@@ -99,6 +100,11 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--local-tools", action="store_true",
                    help="let Claude read files and run read-only commands in the current folder; every tool "
                         "result is redacted before Claude sees it (or set local_tools = true in config)")
+    live = p.add_mutually_exclusive_group()
+    live.add_argument("--live", dest="live", action="store_true", default=None,
+                      help="show the model's thinking, text and tool calls on stderr while it works (default: "
+                           "live_view in config, on unless changed)")
+    live.add_argument("--no-live", dest="live", action="store_false", help="only print the final answer")
     return p
 
 
@@ -160,8 +166,8 @@ def cmd_sessions(argv: list[str]) -> int:
 
 
 def run_with_local_tools(prompt: str, tool: str, model: str | None, session, store: SessionStore, cfg,
-                         lists: ListData, deep: bool, audit: audit_log.AuditLog,
-                         run_id: str) -> cloud_runner.CloudResult:
+                         lists: ListData, deep: bool, audit: audit_log.AuditLog, run_id: str,
+                         view: live_view.View | None = None) -> cloud_runner.CloudResult:
     """[19] [20] Claude works in the current folder; every tool result is redacted with this session's
     mapping by hook_server before the model sees it."""
     def redact_tool_output(text: str) -> str:
@@ -173,7 +179,8 @@ def run_with_local_tools(prompt: str, tool: str, model: str | None, session, sto
             local = cloud_runner.LocalRun(Path.cwd(), server.env(), cfg.hook_timeout_seconds)
             try:
                 return cloud_runner.run(prompt, tool, model, session.conversations.get(tool),
-                                        store.workdir(session.id), cfg.context, cfg.cloud_timeout_seconds, local)
+                                        store.workdir(session.id), cfg.context, cfg.cloud_timeout_seconds, local,
+                                        view)
             except cloud_runner.HookStopped as e:
                 if server.errors:
                     raise cloud_runner.HookStopped(f"{e.message} Cause: {server.errors[-1]}") from e
@@ -247,12 +254,14 @@ def cmd_ask(argv: list[str]) -> int:
             _err("cancelled; nothing was sent.")
             return EXIT_OK
     run_id = audit.start(prompt, tool, model, session.id, counts, result.retries, inp.source)
+    # [21] the model's thinking, text and tool calls on stderr while it works (placeholders, never real values)
+    view = live_view.View(enabled=cfg.live_view if a.live is None else a.live)
     try:
         if local_tools:
-            cloud = run_with_local_tools(prompt, tool, model, session, store, cfg, lists, deep, audit, run_id)
+            cloud = run_with_local_tools(prompt, tool, model, session, store, cfg, lists, deep, audit, run_id, view)
         else:
             cloud = cloud_runner.run(prompt, tool, model, session.conversations.get(tool), store.workdir(session.id),
-                                     cfg.context, cfg.cloud_timeout_seconds)
+                                     cfg.context, cfg.cloud_timeout_seconds, view=view)
     except RedactAskError as e:
         audit.finish(run_id, "error", error=e.message)
         raise

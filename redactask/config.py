@@ -75,6 +75,7 @@ class Config:
     copilot_max_arg_chars: int = 30000
     preview: bool = True
     local_tools: bool = False
+    live_view: bool = True
     hook_timeout_seconds: int = 120
     internal_suffixes: list[str] = field(default_factory=lambda: [
         ".local", ".lan", ".internal", ".corp", ".home.arpa", ".intranet", ".private"])
@@ -137,13 +138,13 @@ def from_dict(raw: dict) -> Config:
     c = Config()
     simple = ["default_target", "max_lines", "max_bytes", "session_expiry_days", "max_scan_retries",
               "cloud_timeout_seconds", "context", "copilot_max_arg_chars", "internal_suffixes", "preview",
-              "local_tools", "hook_timeout_seconds"]
+              "local_tools", "hook_timeout_seconds", "live_view"]
     for key in simple:
         if key in raw:
             setattr(c, key, raw[key])
 
     parse_target(c.default_target)
-    for key in ("preview", "local_tools"):
+    for key in ("preview", "local_tools", "live_view"):
         if not isinstance(getattr(c, key), bool):
             raise UsageError(f"config: {key} must be true or false.")
     if c.context not in ("isolated", "full"):

@@ -60,13 +60,35 @@ redact-ask --file app.log -q "..." --to copilot:gpt-5 --out answer.md
 redact-ask --file app.log -q "..." --preview      # show the redacted text, ask before sending (on by default)
 redact-ask --file app.log -q "..." --dry-run      # show the redacted text only, send nothing
 redact-ask -q "Why won't the app connect?" --local-tools   # Claude reads files here; output redacted
+redact-ask --file app.log -q "..." --no-live      # only print the final answer
 redact-ask sessions list
 redact-ask sessions clear <name> | --all
 redact-ask reset-passphrase
 ```
 
 Options: `--to TARGET[:MODEL]`, `--session NAME`, `--new-session`, `--deep` (local Ollama pass),
-`--restore`, `--out FILE`, `--file PATH`, `--local-tools`. The clipboard is never read.
+`--restore`, `--out FILE`, `--file PATH`, `--local-tools`, `--live` / `--no-live`. The clipboard is never read.
+
+## Live view
+
+While the model works you see what it is doing, as in Claude Code: its thinking, its text as it is
+written, each tool call and a short preview of the result, and any subagents (indented under the
+call that started them). It ends with a summary line, then the answer is printed:
+
+```
+○ The log shows repeated auth failures for <USER_1>; I'll check the web for that error code.
+● WebSearch(sshd "maximum authentication attempts exceeded")
+└ Web search results for query: ...
+● <USER_1> is hitting MaxAuthTries from <IP_1> ...
+■ Done · 2 turns · $0.0123 · 9.4s
+```
+
+The live view goes to stderr, so stdout is still just the answer (`> answer.md` or a pipe gets the
+answer alone). It works in any terminal: colors are used where the terminal supports them (Windows
+Terminal, PowerShell and cmd on Windows 10+, any Linux terminal) and left out when output is
+redirected, `NO_COLOR` is set or `TERM=dumb`. It shows what the model saw and wrote, so values are
+placeholders even with `--restore`. Works with Claude Code and Copilot CLI. Turn it off with
+`--no-live`, or with `live_view = false` in the config (`--live` turns it back on for one run).
 
 ## Local tools (`--local-tools`, Claude only)
 
