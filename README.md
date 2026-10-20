@@ -59,13 +59,27 @@ redact-ask -q "Which host was that on?"          # follow-up, same conversation
 redact-ask --file app.log -q "..." --to copilot:gpt-5 --out answer.md
 redact-ask --file app.log -q "..." --preview      # show the redacted text, ask before sending (on by default)
 redact-ask --file app.log -q "..." --dry-run      # show the redacted text only, send nothing
+redact-ask -q "Why won't the app connect?" --local-tools   # Claude reads files here; output redacted
 redact-ask sessions list
 redact-ask sessions clear <name> | --all
 redact-ask reset-passphrase
 ```
 
 Options: `--to TARGET[:MODEL]`, `--session NAME`, `--new-session`, `--deep` (local Ollama pass),
-`--restore`, `--out FILE`, `--file PATH`. The clipboard is never read.
+`--restore`, `--out FILE`, `--file PATH`, `--local-tools`. The clipboard is never read.
+
+## Local tools (`--local-tools`, Claude only)
+
+Lets Claude look around the current folder itself (read files, search, run commands). Every
+tool result goes through the same redaction before Claude sees it, so `cat .env` reaches it as
+`API_KEY=<API_KEY_1>`. The hooks that do this exist only in the `claude` that redact-ask starts;
+your normal Claude Code sessions are not changed. If a result can't be redacted, the run stops
+instead of sending it. `--restore` puts real values back in the final answer only.
+
+It keeps Claude from *seeing* secrets it comes across; it is not a guarantee against a model that
+deliberately tries to extract them (for example with `base64` or by printing a value in pieces).
+The working-folder path itself is visible to Claude. Set `local_tools = true` in the config to use
+it on every run. See `SPEC.md` ([19], [20]) for details.
 
 ## Passphrase
 
